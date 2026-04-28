@@ -81,7 +81,7 @@ export default function Layout() {
         <div className="border-t border-gray-100 p-5">
           <div className="text-base text-gray-500 truncate">{profile?.email}</div>
           <div className="text-sm text-gray-400">{profile?.role === "super_admin" ? "Admin" : "Member"}</div>
-          <button onClick={signOut} className="flex items-center gap-2 mt-3 text-sm text-gray-400 hover:text-gray-600">
+          <button onClick={() => { if (confirm("Are you sure you want to sign out?")) signOut(); }} className="flex items-center gap-2 mt-3 text-sm text-gray-400 hover:text-gray-600">
             <LogOut size={18} /> Sign out
           </button>
         </div>
