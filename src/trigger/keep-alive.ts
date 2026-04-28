@@ -3,7 +3,7 @@ import { getSupabaseClient } from "../lib/supabase.js";
 
 export const supabaseKeepAlive = schedules.task({
   id: "supabase-keep-alive",
-  cron: "0 8 * * *", // Daily at 08:00 UTC
+  cron: { pattern: "0 8 * * *", timezone: "America/New_York" }, // Daily at 08:00 Eastern
   run: async () => {
     const supabase = getSupabaseClient();
 

@@ -1,8 +1,8 @@
 import { NavLink, Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import {
-  Home, Building2, Wrench, Clock, Users, Bell,
-  AlertTriangle, Package, LogOut, Menu, X
+  Home, Building2, Wrench, Settings, Users, Bell,
+  LogOut, Menu, X
 } from "lucide-react";
 import { useState } from "react";
 
@@ -10,14 +10,12 @@ const nav = [
   { to: "/", icon: Home, label: "Overview" },
   { to: "/properties", icon: Building2, label: "Properties & KB" },
   { to: "/tickets", icon: Wrench, label: "Maintenance" },
-  { to: "/cooldowns", icon: Clock, label: "Cooldowns" },
-  { to: "/extras", icon: Package, label: "Extra Requests" },
+  { to: "/agent-config", icon: Settings, label: "Agent Config" },
 ];
 
 const adminNav = [
   { to: "/users", icon: Users, label: "Users" },
   { to: "/sms-recipients", icon: Bell, label: "SMS Recipients" },
-  { to: "/urgency", icon: AlertTriangle, label: "Urgency Levels" },
 ];
 
 export default function Layout() {
@@ -95,9 +93,7 @@ export default function Layout() {
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-8 py-10">
-          <Outlet />
-        </div>
+        <Outlet />
       </main>
 
       {/* Mobile overlay */}

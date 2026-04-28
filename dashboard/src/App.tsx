@@ -5,11 +5,9 @@ import Login from "./pages/Login";
 import Overview from "./pages/Overview";
 import PropertiesKB from "./pages/PropertiesKB";
 import Tickets from "./pages/Tickets";
-import Cooldowns from "./pages/Cooldowns";
-import ExtraRequests from "./pages/ExtraRequests";
+import AgentConfig from "./pages/AgentConfig";
 import Users from "./pages/Users";
 import SmsRecipients from "./pages/SmsRecipients";
-import UrgencyLevels from "./pages/UrgencyLevels";
 
 export default function App() {
   return (
@@ -21,11 +19,9 @@ export default function App() {
             <Route index element={<Overview />} />
             <Route path="properties" element={<PropertiesKB />} />
             <Route path="tickets" element={<Tickets />} />
-            <Route path="cooldowns" element={<Cooldowns />} />
-            <Route path="extras" element={<ExtraRequests />} />
+            <Route path="agent-config" element={<AgentConfig />} />
             <Route path="users" element={<Users />} />
             <Route path="sms-recipients" element={<SmsRecipients />} />
-            <Route path="urgency" element={<UrgencyLevels />} />
           </Route>
         </Routes>
       </AuthProvider>

@@ -29,7 +29,7 @@ export default function Overview() {
   ];
 
   return (
-    <div>
+    <div className="max-w-5xl mx-auto px-8 py-10">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Overview</h1>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
         {cards.map((c) => (

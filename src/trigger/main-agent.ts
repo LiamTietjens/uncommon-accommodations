@@ -256,11 +256,12 @@ Respond with ONLY the urgency level name (e.g. "high"). No explanation, no other
   if (insertError) throw new Error(`Ticket insert failed: ${insertError.message}`);
   logger.info("Maintenance ticket created", { urgency, propertyId: ctx.propertyId });
 
-  // B4: SMS alerts
+  // B4: SMS alerts — filter by urgency level
+  const urgencyColumn = `receives_maintenance_${urgency}` as const;
   const { data: recipients } = await supabase
     .from("sms_recipients")
     .select("*")
-    .eq("receives_maintenance", true)
+    .eq(urgencyColumn, true)
     .eq("is_active", true);
 
   let smsSent = 0;
@@ -292,7 +293,6 @@ async function subWorkflowC(
   const { data: allowedExtras } = await supabase
     .from("allowed_extras")
     .select("*")
-    .eq("property_id", ctx.propertyId)
     .eq("is_active", true);
 
   const allowedList = (allowedExtras || []).map((e) => e.item_name).join(", ");
@@ -324,25 +324,7 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
       status: "declined",
     });
 
-    // SMS alert
-    const { data: recipients } = await supabase
-      .from("sms_recipients")
-      .select("*")
-      .eq("receives_extras", true)
-      .eq("is_active", true);
-
-    if (recipients && recipients.length > 0) {
-      const smsBody = `Guest at ${ctx.propertyName} requested "${itemRequested}" — not in allowed extras. Declined automatically.`;
-      for (const r of recipients) {
-        try {
-          await sendSms(r.phone, smsBody);
-        } catch (e) {
-          logger.error("SMS send failed", { recipient: r.name, error: String(e) });
-        }
-      }
-    }
-
-    return `Declined. "${itemRequested}" is not in the allowed extras list for this property. SMS sent to notify the host.`;
+    return `Declined. "${itemRequested}" is not in the allowed extras list for this property.`;
   }
 
   // C2b: Allowed — create Turno task
@@ -450,6 +432,13 @@ export const mainAgentWorkflow = task({
     if (senderType === "host") {
       logger.info("Host message — ignoring");
       return { status: "skipped", reason: "host_message" };
+    }
+
+    // --- TESTING FILTER: only process this reservation ---
+    const ALLOWED_RESERVATION_UUID = "42ea05f3-41a4-4a8e-833d-3e7b974bb526";
+    if (reservationUuid !== ALLOWED_RESERVATION_UUID) {
+      logger.info(`Skipping reservation ${reservationUuid} — not in test allowlist`);
+      return { status: "skipped", reason: "reservation not in test allowlist" };
     }
 
     if (!reservationUuid) {
