@@ -17,8 +17,7 @@ interface Ticket {
 const urgencyColor: Record<string, string> = {
   low: "bg-blue-50 text-blue-700",
   medium: "bg-amber-50 text-amber-700",
-  high: "bg-orange-50 text-orange-700",
-  emergency: "bg-red-50 text-red-700",
+  high: "bg-red-50 text-red-700",
 };
 
 const statusColor: Record<string, string> = {

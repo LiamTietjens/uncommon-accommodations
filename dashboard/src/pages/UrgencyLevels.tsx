@@ -4,55 +4,56 @@ import { Pencil, Check, X } from "lucide-react";
 
 interface Category { id: string; level: string; description: string; examples: string; response_time: string; }
 
+const levelColor: Record<string, string> = {
+  low: "bg-blue-50 text-blue-700 border-blue-200",
+  medium: "bg-amber-50 text-amber-700 border-amber-200",
+  high: "bg-orange-50 text-orange-700 border-orange-200",
+};
+
+const levelLabel: Record<string, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+};
+
 export default function UrgencyLevels() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
-  const [form, setForm] = useState<Partial<Category>>({});
+  const [examples, setExamples] = useState("");
 
-  const load = () => { supabase.from("urgency_categories").select("*").order("level").then(({ data }) => setCategories(data ?? [])); };
+  const load = () => {
+    supabase.from("urgency_categories").select("*").in("level", ["low", "medium", "high"]).order("level")
+      .then(({ data }) => setCategories(data ?? []));
+  };
   useEffect(load, []);
 
   const save = async () => {
     if (!editing) return;
-    await supabase.from("urgency_categories").update({
-      description: form.description, examples: form.examples, response_time: form.response_time,
-    }).eq("id", editing);
+    await supabase.from("urgency_categories").update({ examples }).eq("id", editing);
     setEditing(null);
     load();
   };
 
-  const urgencyColor: Record<string, string> = {
-    low: "bg-blue-50 text-blue-700 border-blue-200",
-    medium: "bg-amber-50 text-amber-700 border-amber-200",
-    high: "bg-orange-50 text-orange-700 border-orange-200",
-    emergency: "bg-red-50 text-red-700 border-red-200",
-  };
-
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Urgency Levels</h1>
-      <p className="text-base text-gray-400 mb-6">These levels are used by the AI to classify maintenance ticket urgency. Edit the descriptions and examples to tune the AI's behavior.</p>
+      <h1 className="text-2xl font-semibold text-gray-900 mb-3">Urgency Levels</h1>
+      <p className="text-base text-gray-400 mb-6">Add examples for each urgency level so the AI knows how to classify maintenance issues.</p>
 
       <div className="space-y-4">
         {categories.map((c) => (
-          <div key={c.id} className={`border rounded-xl p-6 ${urgencyColor[c.level] ?? "bg-white border-gray-200"}`}>
+          <div key={c.id} className={`border rounded-xl p-6 ${levelColor[c.level] ?? "bg-white border-gray-200"}`}>
             {editing === c.id ? (
               <div>
-                <div className="text-base font-semibold uppercase mb-4">{c.level}</div>
-                <label className="block mb-4">
-                  <span className="text-sm font-medium opacity-70">Description</span>
-                  <input value={form.description ?? ""} onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    className="mt-1.5 w-full px-4 py-2 text-base border rounded-lg bg-white/80" />
-                </label>
-                <label className="block mb-4">
-                  <span className="text-sm font-medium opacity-70">Examples (comma-separated)</span>
-                  <input value={form.examples ?? ""} onChange={(e) => setForm({ ...form, examples: e.target.value })}
-                    className="mt-1.5 w-full px-4 py-2 text-base border rounded-lg bg-white/80" />
-                </label>
+                <div className="text-lg font-semibold mb-4">{levelLabel[c.level]}</div>
                 <label className="block mb-5">
-                  <span className="text-sm font-medium opacity-70">Response Time</span>
-                  <input value={form.response_time ?? ""} onChange={(e) => setForm({ ...form, response_time: e.target.value })}
-                    className="mt-1.5 w-full px-4 py-2 text-base border rounded-lg bg-white/80" />
+                  <span className="text-sm font-medium opacity-70">Examples</span>
+                  <textarea
+                    value={examples}
+                    onChange={(e) => setExamples(e.target.value)}
+                    rows={3}
+                    className="mt-1.5 w-full px-4 py-3 text-base border rounded-lg bg-white/80 resize-y"
+                    placeholder="e.g. Lightbulb out, squeaky door, minor stain..."
+                  />
                 </label>
                 <div className="flex gap-3">
                   <button onClick={save} className="flex items-center gap-2 px-4 py-1.5 text-sm bg-white/80 rounded-lg hover:bg-white"><Check size={18} /> Save</button>
@@ -62,12 +63,10 @@ export default function UrgencyLevels() {
             ) : (
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-base font-semibold uppercase">{c.level}</div>
-                  <div className="text-base mt-1.5 opacity-80">{c.description}</div>
-                  <div className="text-sm mt-1.5 opacity-60">Examples: {c.examples}</div>
-                  <div className="text-sm opacity-60">Response: {c.response_time}</div>
+                  <div className="text-lg font-semibold">{levelLabel[c.level]}</div>
+                  <div className="text-base mt-2 opacity-80">{c.examples || "No examples yet — add some so the AI can classify issues."}</div>
                 </div>
-                <button onClick={() => { setEditing(c.id); setForm(c); }} className="p-2 opacity-40 hover:opacity-80"><Pencil size={20} /></button>
+                <button onClick={() => { setEditing(c.id); setExamples(c.examples); }} className="p-2 opacity-40 hover:opacity-80"><Pencil size={20} /></button>
               </div>
             )}
           </div>
