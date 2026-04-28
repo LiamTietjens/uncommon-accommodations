@@ -5,10 +5,12 @@ import { Pencil, Check, X } from "lucide-react";
 interface Category { id: string; level: string; description: string; examples: string; response_time: string; }
 
 const levelColor: Record<string, string> = {
-  low: "bg-blue-50 text-blue-700 border-blue-200",
-  medium: "bg-amber-50 text-amber-700 border-amber-200",
-  high: "bg-orange-50 text-orange-700 border-orange-200",
+  high: "bg-red-100 text-red-800 border-red-300",
+  medium: "bg-amber-100 text-amber-800 border-amber-300",
+  low: "bg-green-100 text-green-800 border-green-300",
 };
+
+const levelOrder = ["high", "medium", "low"];
 
 const levelLabel: Record<string, string> = {
   low: "Low",
@@ -23,7 +25,10 @@ export default function UrgencyLevels() {
 
   const load = () => {
     supabase.from("urgency_categories").select("*").in("level", ["low", "medium", "high"]).order("level")
-      .then(({ data }) => setCategories(data ?? []));
+      .then(({ data }) => {
+        const sorted = (data ?? []).sort((a, b) => levelOrder.indexOf(a.level) - levelOrder.indexOf(b.level));
+        setCategories(sorted);
+      });
   };
   useEffect(load, []);
 
