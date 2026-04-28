@@ -13,7 +13,6 @@ interface Ticket {
   properties?: { name: string };
 }
 
-const urgencyLevels = ["high", "medium", "low"];
 const urgencyColor: Record<string, string> = {
   high: "bg-red-100 text-red-700 border-red-200",
   medium: "bg-amber-100 text-amber-700 border-amber-200",

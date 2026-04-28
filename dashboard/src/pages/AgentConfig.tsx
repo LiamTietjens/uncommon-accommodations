@@ -132,7 +132,7 @@ function AllowedExtrasTab() {
     setSaved(false);
   };
 
-  const handleFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+  const handleFocus = (_e: React.FocusEvent<HTMLTextAreaElement>) => {
     if (!text) { setText("• "); setSaved(false); }
   };
 
