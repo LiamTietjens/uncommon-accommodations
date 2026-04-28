@@ -1,0 +1,9 @@
+node_modules
+.trigger
+dist
+.env
+.env.*
+!.env.example
+.DS_Store
+.claude/run-supabase-mcp.sh
+.mcp.json

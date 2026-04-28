@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Guest Agent — Master Execution Plan</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700&family=DM+Serif+Display&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1a1a18;--soft:#4a4a46;--muted:#7a7a74;--border:#d6d3cb;--sand:#f5f3ee;--cream:#faf9f6;--white:#fff;--blue:#185FA5;--blue-bg:#e8f0fa;--teal:#0F6E56;--teal-bg:#e4f5ee;--coral:#993C1D;--coral-bg:#faece7;--amber:#854F0B;--amber-bg:#faeeda;--purple:#534AB7;--purple-bg:#eeedfe}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);line-height:1.65;padding:40px 20px 120px}
+.container{max-width:900px;margin:0 auto}
+.doc-header{border-bottom:2px solid var(--ink);padding-bottom:24px;margin-bottom:48px}
+.doc-header h1{font-family:'DM Serif Display',serif;font-size:2.2rem;letter-spacing:-.02em;line-height:1.15;margin-bottom:6px}
+.doc-header .subtitle{font-size:1.05rem;color:var(--soft)}
+.doc-header .meta{margin-top:14px;font-size:.82rem;color:var(--muted);display:flex;gap:24px;flex-wrap:wrap}
+.stack-banner{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:48px}
+.stack-tag{background:var(--ink);color:var(--cream);padding:5px 14px;border-radius:4px;font-size:.8rem;font-weight:500;letter-spacing:.03em}
+.section{margin-bottom:56px}
+.sn{font-family:'DM Serif Display',serif;font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px}
+.section h2{font-family:'DM Serif Display',serif;font-size:1.5rem;margin-bottom:14px;letter-spacing:-.01em}
+.section p{color:var(--soft);margin-bottom:12px;max-width:740px}
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:22px 26px;margin-bottom:14px}
+.card h3{font-size:.95rem;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.card h3 .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.card p,.card li{font-size:.9rem;color:var(--soft);line-height:1.6}
+.card ul{padding-left:20px;margin-top:6px}
+.card li{margin-bottom:5px}
+.card li strong{color:var(--ink)}
+.dot-blue{background:var(--blue)}.dot-teal{background:var(--teal)}.dot-coral{background:var(--coral)}.dot-amber{background:var(--amber)}.dot-purple{background:var(--purple)}
+.accent-card{border-left:3px solid;background:var(--white);border-radius:0 8px 8px 0;padding:18px 22px;margin-bottom:14px}
+.accent-blue{border-color:var(--blue)}.accent-teal{border-color:var(--teal)}.accent-coral{border-color:var(--coral)}.accent-amber{border-color:var(--amber)}.accent-purple{border-color:var(--purple)}
+.accent-card h4{font-size:.88rem;font-weight:700;margin-bottom:5px}
+.accent-card p{font-size:.86rem;color:var(--soft)}
+.table-wrap{overflow-x:auto;margin:14px 0}
+table{width:100%;border-collapse:collapse;font-size:.86rem}
+th{text-align:left;font-weight:700;padding:8px 12px;border-bottom:2px solid var(--ink);font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--soft);vertical-align:top}
+tr:last-child td{border-bottom:none}
+code{font-family:'DM Mono',monospace;font-size:.82rem;background:var(--sand);padding:2px 6px;border-radius:3px;color:var(--coral)}
+pre{font-family:'DM Mono',monospace;font-size:.8rem;background:#2C2C2A;color:#e8e6df;padding:16px 20px;border-radius:6px;overflow-x:auto;margin:10px 0;line-height:1.5}
+.decision{display:inline-block;font-size:.73rem;font-weight:700;padding:3px 10px;border-radius:3px;text-transform:uppercase;letter-spacing:.06em}
+.decided{background:var(--teal-bg);color:var(--teal)}.open{background:var(--amber-bg);color:var(--amber)}
+hr{border:none;border-top:1px solid var(--border);margin:48px 0}
+.step{display:flex;gap:14px;margin-bottom:12px;align-items:flex-start}
+.step-num{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--sand);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.76rem;font-weight:700;color:var(--muted);margin-top:2px}
+.step-text{font-size:.9rem;color:var(--soft)}
+.step-text strong{color:var(--ink)}
+.callout{background:var(--amber-bg);border-radius:6px;padding:14px 18px;margin:14px 0;font-size:.86rem;color:var(--amber)}
+.callout strong{color:var(--amber)}
+.endpoint-row td:first-child{font-family:'DM Mono',monospace;font-size:.8rem;white-space:nowrap;color:var(--blue)}
+.flow-label{font-family:'DM Serif Display',serif;font-size:1.05rem;color:var(--ink);margin-bottom:10px;padding:6px 0;border-bottom:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="doc-header">
+  <h1>AI Guest Agent — Master Execution Plan</h1>
+  <div class="subtitle">API Endpoints, Database Schema, Workflows &amp; Step-by-Step Build Guide</div>
+  <div class="meta"><span>Version 3.0</span><span>April 2026</span></div>
+</div>
+
+<div class="stack-banner">
+  <span class="stack-tag">Custom Code</span>
+  <span class="stack-tag">Trigger.dev</span>
+  <span class="stack-tag">Claude Sonnet 4.6</span>
+  <span class="stack-tag">Render</span>
+  <span class="stack-tag">Modal</span>
+  <span class="stack-tag">Supabase</span>
+  <span class="stack-tag">SMS API</span>
+  <span class="stack-tag">Hospitable</span>
+  <span class="stack-tag">Turno</span>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION 1: HOSPITABLE API ENDPOINTS                            -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="sn">Section 01</div>
+  <h2>Hospitable API v2 — Endpoints We Need</h2>
+  <p>Base URL: <code>https://public.api.hospitable.com/v2</code>. Authentication: Personal Access Token (PAT) passed as <code>Authorization: Bearer {token}</code>. Generate the PAT at my.hospitable.com &rarr; Apps &rarr; API access &rarr; Access tokens.</p>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Endpoints Used</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Method &amp; Path</th><th>Purpose</th><th>Used In</th></tr></thead>
+        <tbody class="endpoint-row">
+          <tr><td>GET /v2/properties</td><td>List all properties in the account. Returns property UUIDs, names, and details. Supports <code>?include=listings,details</code> and pagination.</td><td>Property Sync Workflow</td></tr>
+          <tr><td>GET /v2/properties/{uuid}</td><td>Get a single property by UUID. Useful for on-demand detail fetches.</td><td>Agent Workflow (if needed)</td></tr>
+          <tr><td>GET /v2/reservations</td><td>List reservations. Filters: <code>?properties[]={uuid}&amp;start_date=&amp;end_date=&amp;include=guest,properties</code>. Returns reservation IDs, guest info, arrival/departure dates, conversation_id, and platform.</td><td>Agent Workflow (context enrichment)</td></tr>
+          <tr><td>GET /v2/reservations/{uuid}</td><td>Get a single reservation with guest and property data. Key field: <code>conversation_id</code>.</td><td>Agent Workflow</td></tr>
+          <tr><td>GET /v2/reservations/{uuid}/messages</td><td>Retrieve all messages in a reservation's conversation thread. This is how we get conversation history for the AI agent.</td><td>Agent Workflow (critical)</td></tr>
+          <tr><td>POST /v2/reservations/{uuid}/messages</td><td>Send a message to the guest. Body: <code>{ "body": "text", "images": ["url"] }</code>. Rate limited: 2/min per reservation, 50/5min globally.</td><td>Agent Workflow (reply to guest)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Webhook — message.created</h3>
+    <p>This is the trigger for the entire system. Configured in Hospitable under Apps &rarr; Tools &rarr; Webhooks.</p>
+    <ul>
+      <li><strong>Webhook URL:</strong> The Modal webhook endpoint (e.g. <code>https://your-modal-webhook.modal.run</code>)</li>
+      <li><strong>Webhook type to enable:</strong> Messages (the <code>message.created</code> action)</li>
+      <li><strong>Payload structure:</strong> <code>{ "id": "...", "action": "message.created", "data": { ... }, "created": "...", "version": "1.0" }</code></li>
+      <li><strong>Important:</strong> The webhook fires for both guest messages AND host messages. You must filter: only trigger the AI when the sender is the guest, not when you (the host) send a reply.</li>
+      <li><strong>Message age limit:</strong> Hospitable will not send webhooks for messages older than 12 hours.</li>
+      <li><strong>Retry policy:</strong> 5 retries with exponential backoff (1s, 5s, 10s, 1hr, 6hr) if your endpoint doesn't return 200.</li>
+    </ul>
+  </div>
+
+  <div class="callout">
+    <strong>Key investigation needed:</strong> Inspect the <code>message.created</code> webhook payload. Confirm it includes: (1) the reservation UUID, (2) the property UUID or a way to derive it, (3) the message body, (4) the sender type (guest vs host). If it only includes the message body and reservation ID, you'll need to call <code>GET /v2/reservations/{uuid}?include=properties</code> to get the property context, and <code>GET /v2/reservations/{uuid}/messages</code> for conversation history.
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION 2: TURNO API                                          -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="sn">Section 02</div>
+  <h2>Turno API v2 — Endpoints We Need</h2>
+  <p>Docs at <a href="https://apidocs.turnoverbnb.com/" target="_blank">apidocs.turnoverbnb.com</a>. <strong>Critical:</strong> Turno requires partner access to use their API. You must <a href="https://turno.com" target="_blank">contact Turno</a> and request API credentials before any integration work can begin.</p>
+
+  <div class="accent-card accent-amber">
+    <h4>API Access is Gated</h4>
+    <p>The Turno API docs state: "Ready to be our partner and use our API? Please contact us so we can grant you access." This means you cannot self-serve API keys. You need to reach out to Turno's team, explain your integration (creating tasks/projects per property programmatically), and get approved. <strong>This is a blocker — do this immediately.</strong></p>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-coral"></span>Expected Endpoints (confirm once access granted)</h3>
+    <p>Based on Turno's product structure (properties, projects/tasks, teammates/cleaners), we expect the following. The exact endpoint paths need to be confirmed against the v2 docs once you have access.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Expected Endpoint</th><th>Purpose</th><th>Used In</th></tr></thead>
+        <tbody class="endpoint-row">
+          <tr><td>GET /properties</td><td>List all properties in the Turno account. Returns Turno property IDs. Needed to map Hospitable properties to Turno properties.</td><td>Property Sync Workflow</td></tr>
+          <tr><td>GET /properties/{id}</td><td>Get a single property and its assigned cleaners/teammates.</td><td>Agent Workflow (extra requests)</td></tr>
+          <tr><td>POST /projects</td><td>Create a new project (cleaning task) for a property. Turno calls cleaning jobs "projects." This is the core endpoint for assigning extra request tasks to cleaners.</td><td>Agent Workflow (extra requests)</td></tr>
+          <tr><td>GET /properties/{id}/teammates</td><td>List cleaners/teammates assigned to a property, with their priority (primary/backup) and contact details.</td><td>Agent Workflow (cleaner lookup)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>Action item:</strong> (1) Contact Turno for API access today. (2) Once approved, inspect the actual endpoint docs and confirm the project creation payload — specifically whether you can set a custom description, assign it to a specific property, and whether it notifies the assigned cleaner automatically. (3) Confirm if the API supports creating "ad-hoc" tasks (not just checkout cleanings) for extras like towels/toiletries.
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION 3: SMS API                                            -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="sn">Section 03</div>
+  <h2>SMS API — Outbound Notifications</h2>
+  <p>Provider: <a href="https://www.smsapi.com/" target="_blank">SMSAPI</a>. Used for outbound alerts to Tyler and other configurable recipients. Not used for guest communication (that stays in Hospitable) or cleaner communication (that goes through Turno).</p>
+
+  <div class="card">
+    <h3><span class="dot dot-coral"></span>What We Need From SMS API</h3>
+    <ul>
+      <li><strong>Send SMS endpoint:</strong> POST to send a message to a phone number with a custom body.</li>
+      <li><strong>Region support:</strong> Confirm the service covers the countries where Tyler and team members are based.</li>
+      <li><strong>Reliable delivery:</strong> Messages need to arrive within seconds — these are operational alerts.</li>
+      <li><strong>Two-way is no longer critical:</strong> Since cleaner communication goes through Turno, we only need outbound. But if SMSAPI supports inbound webhooks cheaply, it could be useful later.</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION 4: SUPABASE SCHEMA                                    -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="sn">Section 04</div>
+  <h2>Supabase — Database Schema</h2>
+  <p>This is the complete table schema for the Supabase project. Each table includes its columns, types, and relationships.</p>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>properties</code></h3>
+    <p>One row per rental property. Synced from Hospitable and mapped to Turno.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto-generated</td></tr>
+        <tr><td><code>name</code></td><td>text</td><td>Human-readable name</td></tr>
+        <tr><td><code>hospitable_property_uuid</code></td><td>text (unique)</td><td>UUID from Hospitable API</td></tr>
+        <tr><td><code>turno_property_id</code></td><td>text (nullable)</td><td>ID from Turno API (once mapped)</td></tr>
+        <tr><td><code>is_active</code></td><td>boolean</td><td>Whether this property is actively managed</td></tr>
+        <tr><td><code>created_at</code></td><td>timestamptz</td><td>Auto</td></tr>
+        <tr><td><code>updated_at</code></td><td>timestamptz</td><td>Auto</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>knowledge_bases</code></h3>
+    <p>KB entries per property. Each row is a single piece of knowledge the AI can use to answer guest questions.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto-generated</td></tr>
+        <tr><td><code>property_id</code></td><td>uuid (FK &rarr; properties)</td><td>Which property this entry belongs to</td></tr>
+        <tr><td><code>title</code></td><td>text</td><td>Short label (e.g. "WiFi password", "Parking instructions")</td></tr>
+        <tr><td><code>content</code></td><td>text</td><td>The full answer/instruction text</td></tr>
+        <tr><td><code>video_url</code></td><td>text (nullable)</td><td>Optional video link to include in reply</td></tr>
+        <tr><td><code>image_url</code></td><td>text (nullable)</td><td>Optional image link to include in reply</td></tr>
+        <tr><td><code>category</code></td><td>text</td><td>"general", "maintenance", "amenity", "check-in", etc.</td></tr>
+        <tr><td><code>created_at</code></td><td>timestamptz</td><td>Auto</td></tr>
+        <tr><td><code>updated_at</code></td><td>timestamptz</td><td>Auto</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>kb_gap_log</code></h3>
+    <p>Every time the AI can't find an answer, it logs the question here for KB health tracking.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto</td></tr>
+        <tr><td><code>property_id</code></td><td>uuid (FK &rarr; properties)</td><td>Which property</td></tr>
+        <tr><td><code>guest_question</code></td><td>text</td><td>The question the AI couldn't answer</td></tr>
+        <tr><td><code>reservation_uuid</code></td><td>text</td><td>Hospitable reservation UUID for context</td></tr>
+        <tr><td><code>created_at</code></td><td>timestamptz</td><td>When the gap was logged</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>cooldowns</code></h3>
+    <p>AI backoff state per property. Scope is <strong>per-property</strong> — when a cooldown is active, the AI ignores ALL messages for that property regardless of which guest sent them. Expired cooldown rows are <strong>kept permanently</strong> for historical analysis (e.g. "how often does the AI back off for this property and why?"). No cleanup job needed — at typical vacation rental scale, this table stays tiny for years. The active cooldown check query uses indexed filters and returns in under a millisecond regardless of table size.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto</td></tr>
+        <tr><td><code>property_id</code></td><td>uuid (FK &rarr; properties)</td><td>Which property is cooled down</td></tr>
+        <tr><td><code>activated_at</code></td><td>timestamptz</td><td>When the cooldown started</td></tr>
+        <tr><td><code>expires_at</code></td><td>timestamptz</td><td>activated_at + 8 hours</td></tr>
+        <tr><td><code>reason</code></td><td>text</td><td>The guest question that triggered the backoff</td></tr>
+        <tr><td><code>is_active</code></td><td>boolean</td><td>Set to false on manual reactivation</td></tr>
+        <tr><td><code>reservation_uuid</code></td><td>text</td><td>Which conversation triggered it</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>maintenance_tickets</code></h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto</td></tr>
+        <tr><td><code>property_id</code></td><td>uuid (FK &rarr; properties)</td><td></td></tr>
+        <tr><td><code>description</code></td><td>text</td><td>What the issue is</td></tr>
+        <tr><td><code>urgency</code></td><td>text</td><td>"low", "medium", "high", "emergency"</td></tr>
+        <tr><td><code>status</code></td><td>text</td><td>"open", "in_progress", "resolved"</td></tr>
+        <tr><td><code>guest_context</code></td><td>text</td><td>Summary of guest conversation for context</td></tr>
+        <tr><td><code>reservation_uuid</code></td><td>text</td><td></td></tr>
+        <tr><td><code>created_at</code></td><td>timestamptz</td><td>Auto</td></tr>
+        <tr><td><code>resolved_at</code></td><td>timestamptz (nullable)</td><td></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>extra_requests</code></h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto</td></tr>
+        <tr><td><code>property_id</code></td><td>uuid (FK &rarr; properties)</td><td></td></tr>
+        <tr><td><code>reservation_uuid</code></td><td>text</td><td></td></tr>
+        <tr><td><code>item_requested</code></td><td>text</td><td>What the guest wants</td></tr>
+        <tr><td><code>status</code></td><td>text</td><td>"pending", "approved", "declined", "fulfilled"</td></tr>
+        <tr><td><code>turno_project_id</code></td><td>text (nullable)</td><td>If approved, the Turno project ID created</td></tr>
+        <tr><td><code>created_at</code></td><td>timestamptz</td><td>Auto</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>sms_recipients</code></h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto</td></tr>
+        <tr><td><code>name</code></td><td>text</td><td>e.g. "Tyler"</td></tr>
+        <tr><td><code>phone</code></td><td>text</td><td>International format</td></tr>
+        <tr><td><code>receives_maintenance</code></td><td>boolean</td><td></td></tr>
+        <tr><td><code>receives_kb_gaps</code></td><td>boolean</td><td></td></tr>
+        <tr><td><code>receives_extras</code></td><td>boolean</td><td></td></tr>
+        <tr><td><code>is_active</code></td><td>boolean</td><td></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>urgency_categories</code></h3>
+    <p>Configurable urgency levels for maintenance tickets. The AI uses these examples to classify urgency. Editable from the dashboard.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto</td></tr>
+        <tr><td><code>level</code></td><td>text</td><td>"low", "medium", "high", "emergency"</td></tr>
+        <tr><td><code>description</code></td><td>text</td><td>What this level means (e.g. "Guest comfort issue, not urgent")</td></tr>
+        <tr><td><code>examples</code></td><td>text</td><td>Comma-separated examples: "lightbulb out, squeaky door, minor stain"</td></tr>
+        <tr><td><code>response_time</code></td><td>text</td><td>Expected response: "within 48hrs", "same day", "within 2hrs", "immediately"</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Table: <code>allowed_extras</code></h3>
+    <p>Per-property list of what extras the AI is allowed to approve. Used by the validation AI.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>uuid (PK)</td><td>Auto</td></tr>
+        <tr><td><code>property_id</code></td><td>uuid (FK &rarr; properties)</td><td></td></tr>
+        <tr><td><code>item_name</code></td><td>text</td><td>e.g. "extra towels", "toiletries", "blanket"</td></tr>
+        <tr><td><code>is_active</code></td><td>boolean</td><td></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-teal"></span>Auth &amp; Users</h3>
+    <ul>
+      <li><strong>Managed by Supabase Auth.</strong> No custom users table needed.</li>
+      <li><strong>Super user:</strong> <code>liam@vaantq.de</code> — created on setup.</li>
+      <li><strong>Invite flow:</strong> Super user sends invite links from dashboard; Supabase handles email confirmation.</li>
+      <li><strong>RLS (Row Level Security):</strong> All tables should have RLS enabled. All authenticated users get full read/write. Anon access blocked.</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION 5: TRIGGER.DEV WORKFLOWS                              -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="sn">Section 05</div>
+  <h2>Trigger.dev — Three Workflows</h2>
+  <p>The system has three Trigger.dev workflows. Each is described with its trigger, every step in order, the API calls it makes, and the Supabase queries involved.</p>
+</div>
+
+<!-- ─── WORKFLOW 1: MAIN AGENT ─── -->
+<div class="section">
+  <div class="sn">Workflow 1 of 3</div>
+  <h2>Main Agent Workflow</h2>
+  <p><strong>Trigger:</strong> HTTP POST from Modal webhook (which receives the <code>message.created</code> webhook from Hospitable).<br>
+  <strong>Purpose:</strong> Process every incoming guest message through the AI agent. The main agent is a <strong>coordinator</strong> that delegates tasks to dedicated sub-workflows. Each sub-workflow is a codified piece of logic within the same Trigger.dev workflow, not a separate workflow. Sub-workflows may contain their own AI steps.</p>
+
+  <div class="accent-card accent-purple">
+    <h4>Architecture: Coordinator &rarr; Sub-Workflows</h4>
+    <p>Think of this as a single Trigger.dev workflow with one main orchestrator (the Claude agent) that picks from four internal code paths. Each code path is a <strong>dedicated function</strong> with fixed logic, its own API calls, its own database queries, and in some cases its own separate Claude AI calls. The main agent never does the work itself — it classifies the request, passes parameters to the right sub-workflow, receives the result, and uses it to respond.</p>
+  </div>
+
+  <div class="flow-label">Phase 1 — Setup (fixed code, no AI)</div>
+
+  <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Receive webhook payload from Modal.</strong> Extract: message body, reservation UUID, sender type. If sender is the host (not guest), EXIT immediately — we don't process our own messages.</div></div>
+
+  <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Look up property ID.</strong> Call <code>GET /v2/reservations/{uuid}?include=properties</code> on the Hospitable API. Extract the <code>property_uuid</code> from the response. If the webhook payload already includes property data, skip this call.</div></div>
+
+  <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Map Hospitable property to our Supabase property.</strong> Query: <code>SELECT * FROM properties WHERE hospitable_property_uuid = '{property_uuid}'</code>. If no match, log error and EXIT — property hasn't been synced yet.</div></div>
+
+  <div class="step"><div class="step-num">4</div><div class="step-text"><strong>COOLDOWN CHECK.</strong> Query: <code>SELECT * FROM cooldowns WHERE property_id = '{id}' AND is_active = true AND expires_at > NOW()</code>. If a row is returned, EXIT immediately. The AI is inactive for this property.</div></div>
+
+  <div class="step"><div class="step-num">5</div><div class="step-text"><strong>Load conversation history.</strong> Call <code>GET /v2/reservations/{uuid}/messages</code> on the Hospitable API. Returns the full message thread. Format as conversation array.</div></div>
+
+  <div class="flow-label">Phase 2 — The Agent Loop</div>
+
+  <div class="accent-card accent-purple">
+    <h4>Architecture: The Coordinator is an Agent, Not a Classifier</h4>
+    <p>The coordinator runs as a proper <strong>agentic loop</strong> using Claude's tool-use pattern. It calls a tool, the orchestrating code executes the corresponding hard-coded sub-workflow, and the result is sent back to the agent as a <code>tool_result</code>. The agent then sees what the tool did and composes the final conversational reply to the guest. <strong>The agent is the one who talks to the guest — not the sub-workflows.</strong> Sub-workflows perform actions (DB writes, API calls, separate AI steps) and report back what they did. The agent uses that information to write a natural, contextual reply in the guest's language.</p>
+    <p style="margin-top:8px"><strong>The only exception is Sub-Workflow D (Human Escalation).</strong> If D fires — either from the agent directly or from A's if/else branch — the entire workflow terminates. No result is sent back to the agent. No reply is sent to the guest. Hard stop.</p>
+  </div>
+
+  <div class="step"><div class="step-num">6</div><div class="step-text"><strong>Start the agent loop.</strong> Call Claude Sonnet 4.6 with: conversation history, latest guest message, and tool definitions. The agent analyses the conversation and calls a tool. The orchestrating code executes the sub-workflow, sends the result back as a <code>tool_result</code>, and the agent continues — composing its final reply to the guest using the tool's output.</div></div>
+
+  <div class="card">
+    <h3><span class="dot dot-purple"></span>Agent Tool Definitions (parameters + return values)</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Tool Name</th><th>Parameters</th><th>Returns to Agent</th></tr></thead>
+      <tbody>
+        <tr><td><code>use_knowledge_base</code></td><td><code>{ query: string }</code></td><td>The KB answer text + any video/image links. Or triggers D if no answer (hard stop, no return).</td></tr>
+        <tr><td><code>raise_maintenance_ticket</code></td><td><code>{ issue_description: string, guest_context: string }</code></td><td>"Maintenance ticket created. Urgency: [level]. SMS sent to [N] recipients."</td></tr>
+        <tr><td><code>process_extra_request</code></td><td><code>{ item_requested: string }</code></td><td>"Approved. Turno task created." or "Declined. Not in allowed extras. SMS sent."</td></tr>
+        <tr><td><code>escalate_to_human</code></td><td><code>{ reason: string }</code></td><td><strong>No return. Hard stop.</strong> Workflow terminates.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="step"><div class="step-num">7</div><div class="step-text"><strong>Tool execution.</strong> The orchestrating code parses the tool call, runs the sub-workflow function with the parameters + shared context (property_id, reservation_uuid, etc.), and sends the return value back to Claude as a <code>tool_result</code>. Exception: if the tool is <code>escalate_to_human</code> or if Sub-Workflow A branches to D, the workflow terminates — no tool_result goes back.</div></div>
+
+  <div class="step"><div class="step-num">8</div><div class="step-text"><strong>Agent composes final reply.</strong> The agent receives the tool result, and outputs a natural, conversational guest message — in the guest's language, informed by the tool output and conversation history. The orchestrating code sends this via <code>POST /v2/reservations/{uuid}/messages</code>.</div></div>
+
+  <div class="accent-card accent-teal">
+    <h4>Why the agent sends the reply, not the sub-workflows</h4>
+    <p>The agent has the full conversation context and the guest's language. Sub-Workflow A returns a raw KB answer — the agent wraps it in a warm reply. Sub-Workflow B returns "ticket created, urgency: high" — the agent turns that into "I've flagged this as urgent and our maintenance team has been notified." Sub-Workflow C returns "approved, Turno task created" — the agent says "Great news, we've arranged that for you!" The agent is the voice. The sub-workflows are the hands.</p>
+  </div>
+
+  <!-- SUB-WORKFLOW A -->
+  <div class="flow-label">Sub-Workflow A — Knowledge Base Lookup</div>
+  <p>Triggered when agent calls <code>use_knowledge_base</code>.</p>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Input Parameters</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Parameter</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td><code>query</code></td><td>Agent tool call — guest's question rephrased for search</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:8px">Everything else the sub-workflow needs — <code>property_id</code>, <code>reservation_uuid</code>, <code>conversation_history</code> — is already in the orchestrating code's scope from the setup phase (steps 1–5). No need to pass it through the agent.</p>
+    <p><strong>Returns to agent:</strong> KB answer text + video/image URLs. Or triggers D (no return).</p>
+  </div>
+
+  <div class="step"><div class="step-num">A1</div><div class="step-text"><strong>Load KB.</strong> <code>SELECT * FROM knowledge_bases WHERE property_id = ?</code></div></div>
+  <div class="step"><div class="step-num">A2</div><div class="step-text"><strong>Call Sonnet 4.6 — KB Answerer (AI step #2).</strong> Separate Claude call. Searches KB for the answer. Prompt instructs: "If you cannot find the answer, respond with exactly <code>NO_ANSWER_FOUND</code> on the first line."</div></div>
+  <div class="step"><div class="step-num">A3</div><div class="step-text"><strong>If/else (hard-coded).</strong><br>
+  <code>if (response.startsWith("NO_ANSWER_FOUND")) → runSubWorkflowD() → return (HARD STOP)</code><br>
+  <code>else → return response to agent as tool_result</code><br>
+  If no answer found, D fires and the workflow terminates. Agent never gets a tool_result. If answer found, the KB text is sent back to the agent, which uses it to compose the guest reply.</div></div>
+
+  <!-- SUB-WORKFLOW B -->
+  <div class="flow-label">Sub-Workflow B — Maintenance Ticket</div>
+  <p>Triggered when agent calls <code>raise_maintenance_ticket</code>. Does the work, reports back.</p>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Input Parameters</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Parameter</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td><code>issue_description</code></td><td>Agent tool call — what's broken/wrong</td></tr>
+        <tr><td><code>guest_context</code></td><td>Agent tool call — conversation summary</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:8px"><code>property_id</code> and <code>reservation_uuid</code> are already in scope from setup. No need to pass through the agent.</p>
+    <p><strong>Returns to agent:</strong> "Maintenance ticket created. Urgency: [level]. SMS sent to [N] recipients."</p>
+  </div>
+
+  <div class="step"><div class="step-num">B1</div><div class="step-text"><strong>Load urgency config.</strong> <code>SELECT * FROM urgency_categories ORDER BY level</code> (dashboard-configurable).</div></div>
+  <div class="step"><div class="step-num">B2</div><div class="step-text"><strong>Call Sonnet 4.6 — Urgency Assessor (AI step #3).</strong> Separate Claude call. Input: issue + urgency categories with examples from DB. Output: urgency level string.</div></div>
+  <div class="step"><div class="step-num">B3</div><div class="step-text"><strong>Create ticket.</strong> <code>INSERT INTO maintenance_tickets</code> with: property_id, description, urgency, status='open', guest_context, reservation_uuid, created_at=NOW().</div></div>
+  <div class="step"><div class="step-num">B4</div><div class="step-text"><strong>SMS alerts.</strong> Query <code>sms_recipients WHERE receives_maintenance = true</code>. Send via SMS API.</div></div>
+  <div class="step"><div class="step-num">B5</div><div class="step-text"><strong>Return result to agent.</strong> The agent receives the confirmation and uses it to compose a warm message to the guest about the maintenance team being notified.</div></div>
+
+  <!-- SUB-WORKFLOW C -->
+  <div class="flow-label">Sub-Workflow C — Extra Request Processing</div>
+  <p>Triggered when agent calls <code>process_extra_request</code>. Mostly API calls. Reports back.</p>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Input Parameters</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Parameter</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td><code>item_requested</code></td><td>Agent tool call — what the guest wants</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:8px"><code>property_id</code> and <code>reservation_uuid</code> are already in scope from setup.</p>
+    <p><strong>Returns to agent:</strong> "Approved. Turno task created for [item]." or "Declined. [item] not in allowed extras. SMS sent."</p>
+  </div>
+
+  <div class="step"><div class="step-num">C1</div><div class="step-text"><strong>Check allowed extras.</strong> <code>SELECT * FROM allowed_extras WHERE property_id = ? AND is_active = true</code>. Match item against list.</div></div>
+  <div class="step"><div class="step-num">C2a</div><div class="step-text"><strong>If NOT allowed:</strong> INSERT into <code>extra_requests</code> (status: declined). SMS Tyler. Return to agent: "Declined."</div></div>
+  <div class="step"><div class="step-num">C2b</div><div class="step-text"><strong>If allowed:</strong> Look up <code>turno_property_id</code>. POST to Turno API to create project. INSERT into <code>extra_requests</code> (status: approved). Return to agent: "Approved. Task created."</div></div>
+
+  <!-- SUB-WORKFLOW D -->
+  <div class="flow-label">Sub-Workflow D — Human Escalation (HARD STOP)</div>
+
+  <div class="card">
+    <h3><span class="dot dot-coral"></span>Two Trigger Paths — Both Are Hard Stops</h3>
+    <ul>
+      <li><strong>Path 1 — Agent calls <code>escalate_to_human</code>.</strong> Orchestrating code detects this tool, runs D, terminates workflow. No <code>tool_result</code> sent back. Agent loop broken.</li>
+      <li><strong>Path 2 — Sub-Workflow A branches to D.</strong> KB Answerer returned <code>NO_ANSWER_FOUND</code>. A3's if/else calls D, then returns. Agent never receives a tool_result for its <code>use_knowledge_base</code> call. Agent loop broken.</li>
+    </ul>
+    <p><strong>In both cases:</strong> no tool_result, no reply composed, no message to guest. Workflow terminates.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Input Parameters</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Parameter</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td><code>reason</code></td><td>Agent tool call (Path 1) OR the NO_ANSWER_FOUND text from KB Answerer (Path 2)</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:8px"><code>property_id</code>, <code>reservation_uuid</code>, and the original guest question are already in scope from setup. The guest question is logged in <code>kb_gap_log</code> and included in the SMS alert.</p>
+    <p><strong>Returns to agent: NOTHING.</strong> Workflow terminates. No reply to guest.</p>
+  </div>
+
+  <div class="accent-card accent-coral">
+    <h4>The AI does NOT reply to the guest. This is the most critical rule.</h4>
+    <p>No guessing, no placeholder, no "let me check." Silence.</p>
+  </div>
+
+  <div class="step"><div class="step-num">D1</div><div class="step-text"><strong>Log KB gap.</strong> INSERT into <code>kb_gap_log</code>.</div></div>
+  <div class="step"><div class="step-num">D2</div><div class="step-text"><strong>Set 8hr cooldown.</strong> INSERT into <code>cooldowns</code> (expires_at = NOW() + 8hrs).</div></div>
+  <div class="step"><div class="step-num">D3</div><div class="step-text"><strong>SMS alerts.</strong> Query <code>sms_recipients WHERE receives_kb_gaps = true</code>. Send via SMS API.</div></div>
+  <div class="step"><div class="step-num">D4</div><div class="step-text"><strong>TERMINATE WORKFLOW.</strong> No tool_result. Agent loop broken. No reply to guest.</div></div>
+
+  <div class="flow-label">Summary: AI Calls Within the Workflow</div>
+
+  <div class="card">
+    <h3><span class="dot dot-purple"></span>Three Distinct Claude Calls</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>AI Step</th><th>Role</th><th>Input</th><th>Output</th></tr></thead>
+      <tbody>
+        <tr><td><strong>#1 — Coordinator</strong></td><td>Classify request, pick tool</td><td>Conversation history + latest message + tool definitions</td><td>Tool call with parameters</td></tr>
+        <tr><td><strong>#2 — KB Answerer</strong></td><td>Answer guest question from KB</td><td>KB entries + guest question + conversation history</td><td>Draft reply text (or ESCALATE_TO_HUMAN)</td></tr>
+        <tr><td><strong>#3 — Urgency Assessor</strong></td><td>Categorise maintenance urgency</td><td>Issue description + urgency categories with examples from dashboard</td><td>Urgency level (low/medium/high/emergency)</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:10px">AI steps #2 and #3 only run when their sub-workflow is triggered. A simple KB question uses #1 + #2. A maintenance issue uses #1 + #3. An extras request uses #1 only (the rest is API calls). A human escalation uses #1 only.</p>
+  </div>
+</div>
+
+<hr>
+
+<!-- ─── AI MODEL, ARCHITECTURE & PROMPTS ─── -->
+<div class="section">
+  <div class="sn">Workflow 1 — continued</div>
+  <h2>AI Model, Architecture &amp; Prompt Templates</h2>
+
+  <div class="accent-card accent-coral">
+    <h4>Architecture — this is the most important thing to understand</h4>
+    <p>The main coordinator is an <strong>agent running in a loop</strong>, not a single prompt. It has access to <strong>tools</strong>. Each tool maps to a <strong>hard-coded sub-workflow</strong> — a dedicated block of fixed code within the same Trigger.dev workflow. These sub-workflows execute API calls, database queries, and where needed, their own separate AI calls. When a sub-workflow finishes, it <strong>reports back to the agent</strong> with what it did. The agent then uses that information to compose and send the final reply to the guest. The agent is the voice. The sub-workflows are the hands. The only exception: Sub-Workflow D (Human Escalation) is a hard stop — it terminates the workflow without reporting back and without sending any reply.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-purple"></span>Model</h3>
+    <p><strong>Claude Sonnet 4.6</strong> (<code>claude-sonnet-4-6</code>) for all AI steps. This applies to the coordinator, the KB answerer, and the urgency assessor.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-purple"></span>Prompt Format</h3>
+    <p>All prompts use Markdown with consistent sections: <code># Role</code>, <code># Context</code>, <code># Step by Step</code>, <code># Output</code>. The coordinator prompt also includes <code># Language</code> since it determines the reply language for the guest.</p>
+  </div>
+
+  <div class="flow-label">Prompt: AI Step #1 — Coordinator</div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Coordinator System Prompt</h3>
+<pre># Role
+You are a coordinator agent for a vacation rental guest messaging system.
+Your ONLY job is to classify the guest's message and call the right tool.
+You do NOT answer the guest directly. You do NOT draft replies.
+You analyse the conversation and delegate to the appropriate sub-workflow.
+
+# Language
+Detect the language the guest is writing in. All replies generated downstream
+will match this language. Pass the detected language as part of your tool call
+if the tool accepts it.
+
+# Context
+You are handling messages for property: {{property_name}}
+Current conversation history is provided below.
+The guest's latest message is the last entry.
+
+{{conversation_history}}
+
+# Step by Step
+1. Read the full conversation to understand context and tone.
+2. Focus on the guest's latest message.
+3. Classify the request into one of four categories:
+   - KNOWLEDGE BASE QUESTION: Guest is asking a question, requesting info,
+     or reporting an issue that might have an answer in the property's KB
+     (wifi, parking, check-in, amenities, house rules, local tips, etc.)
+   - MAINTENANCE ISSUE: Guest is reporting something broken, leaking,
+     not working, damaged, or requiring physical repair.
+   - EXTRA REQUEST: Guest is requesting an additional item or service
+     (towels, toiletries, blankets, pillows, etc.)
+   - ESCALATE TO HUMAN: The request doesn't fit any category above,
+     or it's a complaint, a billing issue, or something you can't handle.
+4. Call the corresponding tool with the required parameters.
+
+# Output
+You MUST call exactly one tool. Do not output any text outside of the tool call.
+Do not attempt to answer the guest yourself.</pre>
+  </div>
+
+  <div class="flow-label">Prompt: AI Step #2 — KB Answerer</div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>KB Answerer System Prompt</h3>
+<pre># Role
+You are a friendly and helpful guest assistant for the vacation rental
+property "{{property_name}}". You answer guest questions using ONLY
+the knowledge base provided below. You are warm, conversational, and concise.
+
+# Context
+Property: {{property_name}}
+Guest language: {{detected_language}}
+Conversation history:
+{{conversation_history}}
+
+Knowledge base for this property:
+{{knowledge_base_entries}}
+
+# Step by Step
+1. Read the guest's question carefully.
+2. Search the knowledge base entries for a relevant answer.
+3. If you find an answer:
+   - Write a warm, conversational reply in the guest's language.
+   - If the KB entry includes a video_url or image_url, include it
+     naturally in your reply (e.g. "Here's a quick video showing how: [url]").
+   - Keep it concise. Don't over-explain.
+4. If you CANNOT find the answer in the knowledge base:
+   - Do NOT guess or make up information.
+   - Respond with exactly: NO_ANSWER_FOUND
+   - Add a brief reason on the next line: e.g. "No KB entry covers pool heating"
+
+# Output
+Either a conversational reply to the guest (using only KB content),
+or NO_ANSWER_FOUND followed by a reason. Nothing else.</pre>
+  </div>
+
+  <div class="flow-label">Prompt: AI Step #3 — Urgency Assessor</div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Urgency Assessor System Prompt</h3>
+<pre># Role
+You are a maintenance urgency classifier for vacation rental properties.
+Your ONLY job is to read a maintenance issue description and assign
+the correct urgency level based on the categories provided.
+
+# Context
+Maintenance issue reported by guest:
+"{{issue_description}}"
+
+Guest context:
+"{{guest_context}}"
+
+Available urgency levels (configured by the property manager):
+{{urgency_categories_from_database}}
+
+# Step by Step
+1. Read the issue description carefully.
+2. Compare it against the examples for each urgency level.
+3. Consider: Does this affect guest safety? Can the guest still
+   use the property? Is it cosmetic or functional? Is it time-sensitive?
+4. Select the single most appropriate urgency level.
+
+# Output
+Respond with ONLY the urgency level name (e.g. "high").
+No explanation, no other text.</pre>
+  </div>
+</div>
+
+<hr>
+<div class="section">
+  <div class="sn">Workflow 2 of 3</div>
+  <h2>Property Sync Workflow</h2>
+  <p><strong>Trigger:</strong> Manual — triggered by clicking a "Sync Properties" button on the dashboard. No schedule, no cron.<br>
+  <strong>Purpose:</strong> Pull properties from Hospitable and Turno and upsert them into Supabase.</p>
+
+  <div class="flow-label">Step-by-Step Execution</div>
+
+  <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Dashboard user clicks "Sync Properties."</strong> This triggers the Trigger.dev workflow via an HTTP call from the dashboard frontend.</div></div>
+
+  <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Fetch all properties from Hospitable.</strong> Call <code>GET /v2/properties?include=listings,details</code>. Paginate through all results. Collect: property UUID, name, and any relevant metadata.</div></div>
+
+  <div class="step"><div class="step-num">3</div><div class="step-text"><strong>For each Hospitable property, upsert into Supabase.</strong> Query: <code>SELECT * FROM properties WHERE hospitable_property_uuid = '{uuid}'</code>. If it exists, update the name and metadata. If it doesn't exist, INSERT a new row.</div></div>
+
+  <div class="step"><div class="step-num">4</div><div class="step-text"><strong>Fetch all properties from Turno API.</strong> Call <code>GET /properties</code> (exact path TBD once API access granted). Collect: Turno property IDs and names.</div></div>
+
+  <div class="step"><div class="step-num">5</div><div class="step-text"><strong>Match Turno properties to Supabase properties.</strong> Match by name or by a manual mapping table. Update the <code>turno_property_id</code> column for each matched property.</div></div>
+
+  <div class="step"><div class="step-num">6</div><div class="step-text"><strong>Log sync results.</strong> Record how many properties were added and updated. Workflow exits. Dashboard shows the result.</div></div>
+
+  <div class="callout">
+    <strong>Turno mapping note:</strong> Matching Hospitable properties to Turno properties may require a manual initial mapping (done via the dashboard) since the names might differ between platforms. The sync workflow updates metadata but the initial linkage likely needs human confirmation.
+  </div>
+</div>
+
+<hr>
+
+<!-- ─── WORKFLOW 3: SUPABASE KEEP-ALIVE ─── -->
+<div class="section">
+  <div class="sn">Workflow 3 of 3</div>
+  <h2>Supabase Keep-Alive Workflow</h2>
+  <p><strong>Trigger:</strong> Trigger.dev scheduled trigger — runs once daily. Not a cron job; Trigger.dev has built-in scheduled triggers that handle this natively.<br>
+  <strong>Purpose:</strong> Prevent Supabase free-tier project from being paused due to inactivity.</p>
+
+  <div class="flow-label">Step-by-Step Execution</div>
+
+  <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Run a simple read query.</strong> <code>SELECT COUNT(*) FROM properties</code>. This generates database activity.</div></div>
+
+  <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Run a simple write + delete.</strong> <code>INSERT INTO cooldowns (property_id, activated_at, expires_at, reason, is_active, reservation_uuid) VALUES (uuid_generate_v4(), NOW(), NOW(), 'keep-alive', false, 'keep-alive')</code> then immediately <code>DELETE FROM cooldowns WHERE reason = 'keep-alive'</code>. This simulates write activity without leaving junk data.</div></div>
+
+  <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Log success.</strong> Optionally log that the keep-alive ran. Workflow exits.</div></div>
+
+  <div class="accent-card accent-purple">
+    <h4>Why this exists</h4>
+    <p>Supabase's free tier pauses projects after a period of inactivity (typically 7 days with no database requests). This lightweight daily ping prevents that. It costs nothing and takes milliseconds to run.</p>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION 6: HOW EVERYTHING CONNECTS                            -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="sn">Section 06</div>
+  <h2>How Everything Connects</h2>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Data Flow: Guest Message &rarr; AI Response</h3>
+    <ul>
+      <li><strong>Guest</strong> sends message in Airbnb/Booking.com/Vrbo &rarr;</li>
+      <li><strong>Hospitable</strong> receives it in the unified inbox &rarr; fires <code>message.created</code> webhook &rarr;</li>
+      <li><strong>Modal</strong> receives the webhook POST &rarr; forwards payload to Trigger.dev &rarr;</li>
+      <li><strong>Trigger.dev</strong> runs the Main Agent Workflow &rarr;</li>
+      <li>Workflow calls <strong>Hospitable API</strong> for reservation details + message history &rarr;</li>
+      <li>Workflow queries <strong>Supabase</strong> for cooldown check + KB + allowed extras &rarr;</li>
+      <li>Workflow calls <strong>Claude Sonnet 4.6</strong> with all context &rarr;</li>
+      <li>Claude decides action &rarr; tool executed: reply via <strong>Hospitable API</strong>, or create task in <strong>Turno API</strong>, or SMS via <strong>SMS API</strong>, or silent escalation to <strong>Supabase</strong> &rarr;</li>
+      <li><strong>Guest</strong> sees the reply in their booking platform.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Data Flow: Property Sync</h3>
+    <ul>
+      <li><strong>Dashboard user</strong> clicks "Sync Properties" &rarr; triggers Trigger.dev workflow &rarr;</li>
+      <li>Calls <strong>Hospitable API</strong> <code>GET /v2/properties</code> &rarr;</li>
+      <li>Calls <strong>Turno API</strong> <code>GET /properties</code> &rarr;</li>
+      <li>Upserts into <strong>Supabase</strong> <code>properties</code> table &rarr;</li>
+      <li><strong>Dashboard</strong> reflects current state.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Data Flow: Dashboard Interaction</h3>
+    <ul>
+      <li><strong>User</strong> logs into dashboard (hosted on Render, auth via Supabase Auth) &rarr;</li>
+      <li>All reads/writes go directly to <strong>Supabase</strong> via the REST API or Supabase JS client &rarr;</li>
+      <li>User edits KB entries, views tickets, manages cooldowns, configures SMS recipients &rarr;</li>
+      <li>Next time the AI workflow runs, it reads the updated data from Supabase.</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION 7: ENVIRONMENT VARIABLES & SETUP                       -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="sn">Section 07</div>
+  <h2>Environment Variables &amp; API Credentials</h2>
+  <p>Every external service needs credentials. Here's exactly what to get, where to get it, and what to name the env var.</p>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Hospitable</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Env Variable</th><th>What It Is</th><th>Where to Get It</th></tr></thead>
+      <tbody>
+        <tr><td><code>HOSPITABLE_API_TOKEN</code></td><td>Personal Access Token (PAT)</td><td>my.hospitable.com &rarr; Apps &rarr; API access &rarr; Access tokens &rarr; + Add new. Select read + write scopes. Copy the token immediately — it won't be shown again.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Used as: <code>Authorization: Bearer {HOSPITABLE_API_TOKEN}</code> in all Hospitable API calls.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Turno</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Env Variable</th><th>What It Is</th><th>Where to Get It</th></tr></thead>
+      <tbody>
+        <tr><td><code>TURNO_API_KEY</code></td><td>API key or token (exact format TBD)</td><td><strong>Requires partner approval.</strong> Contact Turno at turno.com and request API access. They'll provide credentials once approved. Placeholder for now.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Turno's API is gated. You cannot self-serve. Email them explaining you want to create projects programmatically for guest extra requests. Until they respond, we use a placeholder and build everything else around it.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>SMSAPI</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Env Variable</th><th>What It Is</th><th>Where to Get It</th></tr></thead>
+      <tbody>
+        <tr><td><code>SMSAPI_TOKEN</code></td><td>OAuth access token</td><td>smsapi.com &rarr; Customer Portal &rarr; API Settings &rarr; API tokens (OAuth) &rarr; Generate access token. Select "SMS" scope. Copy the token immediately — it won't be shown again.</td></tr>
+        <tr><td><code>SMSAPI_SENDER_NAME</code></td><td>SMS sender name (up to 11 chars)</td><td>smsapi.com &rarr; Customer Portal &rarr; SMS settings &rarr; Sender names. Verify a sender name (e.g. "GuestAgent" or your brand name). Default before verification is "Test".</td></tr>
+      </tbody>
+    </table></div>
+    <p>Used as: <code>Authorization: Bearer {SMSAPI_TOKEN}</code>. Endpoint: <code>POST https://api.smsapi.com/sms.do</code>.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Supabase</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Env Variable</th><th>What It Is</th><th>Where to Get It</th></tr></thead>
+      <tbody>
+        <tr><td><code>SUPABASE_URL</code></td><td>Project URL</td><td>Supabase dashboard &rarr; Settings &rarr; API &rarr; Project URL. Looks like: <code>https://xxxxx.supabase.co</code></td></tr>
+        <tr><td><code>SUPABASE_ANON_KEY</code></td><td>Anon/public key</td><td>Same page. Used by the dashboard frontend (client-side, respects RLS).</td></tr>
+        <tr><td><code>SUPABASE_SERVICE_ROLE_KEY</code></td><td>Service role key (secret)</td><td>Same page. Used by Trigger.dev workflows (server-side, bypasses RLS). Keep this secret.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Claude / Anthropic</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Env Variable</th><th>What It Is</th><th>Where to Get It</th></tr></thead>
+      <tbody>
+        <tr><td><code>ANTHROPIC_API_KEY</code></td><td>API key</td><td>console.anthropic.com &rarr; API keys &rarr; Create key. Model to use: <code>claude-sonnet-4-6</code>.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Trigger.dev</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Env Variable</th><th>What It Is</th><th>Where to Get It</th></tr></thead>
+      <tbody>
+        <tr><td><code>TRIGGER_SECRET_KEY</code></td><td>Project API key</td><td>Trigger.dev dashboard &rarr; Project settings &rarr; API keys.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>Summary: All Env Variables</h3>
+<pre># Hospitable
+HOSPITABLE_API_TOKEN=
+
+# Turno (placeholder until partner access granted)
+TURNO_API_KEY=
+
+# SMSAPI
+SMSAPI_TOKEN=
+SMSAPI_SENDER_NAME=
+
+# Supabase
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# Claude / Anthropic
+ANTHROPIC_API_KEY=
+
+# Trigger.dev
+TRIGGER_SECRET_KEY=</pre>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION 8: BUILD STEPS                                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="sn">Section 08</div>
+  <h2>Build Steps — Phase 0: Setup &amp; Webhook Inspection</h2>
+  <p>Before writing any agent logic, we need to set up the infrastructure and inspect the Hospitable webhook payload. This determines whether the plan needs adjustment.</p>
+
+  <div class="flow-label">Step 1 — Set Up Modal Webhook</div>
+
+  <div class="step"><div class="step-num">1a</div><div class="step-text"><strong>Create a Modal account</strong> and set up a simple HTTP endpoint (a Modal web function). This endpoint will receive POST requests from Hospitable and forward the payload to Trigger.dev.</div></div>
+  <div class="step"><div class="step-num">1b</div><div class="step-text"><strong>Deploy the Modal webhook.</strong> It should accept POST, log the full request body, and return 200 OK. For now, it doesn't need to do anything else — just receive and log.</div></div>
+  <div class="step"><div class="step-num">1c</div><div class="step-text"><strong>Copy the Modal webhook URL.</strong> You'll need this for the next step.</div></div>
+
+  <div class="flow-label">Step 2 — Connect Hospitable to Modal</div>
+
+  <div class="step"><div class="step-num">2a</div><div class="step-text"><strong>Go to Hospitable:</strong> my.hospitable.com &rarr; Apps &rarr; Tools &rarr; Webhooks &rarr; + Add new.</div></div>
+  <div class="step"><div class="step-num">2b</div><div class="step-text"><strong>Paste the Modal webhook URL.</strong> Give it a name like "AI Agent Webhook".</div></div>
+  <div class="step"><div class="step-num">2c</div><div class="step-text"><strong>Select webhook type: Messages.</strong> This is the <code>message.created</code> event. You can also enable Properties and Reservations for future use.</div></div>
+  <div class="step"><div class="step-num">2d</div><div class="step-text"><strong>Click "Test".</strong> Hospitable will send your latest message to the webhook URL. Check Modal's logs to confirm it arrived.</div></div>
+
+  <div class="flow-label">Step 3 — Set Up Trigger.dev</div>
+
+  <div class="step"><div class="step-num">3a</div><div class="step-text"><strong>Create a Trigger.dev project.</strong> Set up the workspace and connect it to your Render deployment (or run locally for testing).</div></div>
+  <div class="step"><div class="step-num">3b</div><div class="step-text"><strong>Create a test workflow.</strong> This workflow does one thing: receive the webhook payload from Modal, log the entire payload to the console, and exit. No AI, no Supabase, no logic — just log what comes through.</div></div>
+  <div class="step"><div class="step-num">3c</div><div class="step-text"><strong>Update Modal to forward to Trigger.dev.</strong> Instead of just logging, Modal now POSTs the Hospitable payload to the Trigger.dev workflow endpoint.</div></div>
+
+  <div class="flow-label">Step 4 — Inspect the Webhook Payload</div>
+
+  <div class="step"><div class="step-num">4a</div><div class="step-text"><strong>Send a real guest message</strong> (or use Hospitable's test button). The message flows: Hospitable &rarr; Modal &rarr; Trigger.dev &rarr; logged to console.</div></div>
+  <div class="step"><div class="step-num">4b</div><div class="step-text"><strong>Inspect the payload.</strong> Document every field. The critical questions to answer:</div></div>
+
+  <div class="card">
+    <h3><span class="dot dot-amber"></span>What We Need to See in the Payload</h3>
+    <ul>
+      <li><strong>Does it include the reservation UUID?</strong> If yes, we can call <code>GET /v2/reservations/{uuid}</code> for full context. If no, we have a problem.</li>
+      <li><strong>Does it include the property UUID directly?</strong> If yes, we can skip the reservation lookup for property mapping. If no, we need the reservation UUID to get it.</li>
+      <li><strong>Does it include the message body?</strong> The actual text the guest sent.</li>
+      <li><strong>Does it include the sender type?</strong> We need to distinguish guest messages from host messages — otherwise the AI would trigger on its own replies.</li>
+      <li><strong>Does it include conversation history?</strong> Unlikely — we'll probably need to call <code>GET /v2/reservations/{uuid}/messages</code> separately.</li>
+      <li><strong>What other fields are there?</strong> Guest name, check-in date, platform (Airbnb/Booking/Vrbo)? All useful context.</li>
+    </ul>
+  </div>
+
+  <div class="step"><div class="step-num">4c</div><div class="step-text"><strong>Share the payload with me.</strong> I'll review it and tell you if the plan needs to change based on what's actually in the webhook.</div></div>
+
+  <div class="flow-label">Step 5 — Set Up Remaining Services (in parallel)</div>
+
+  <div class="step"><div class="step-num">5a</div><div class="step-text"><strong>Create Supabase project.</strong> Set up the database, create the super user (liam@vaantq.de), and run the table creation SQL from Section 04.</div></div>
+  <div class="step"><div class="step-num">5b</div><div class="step-text"><strong>Create SMSAPI account.</strong> Generate the OAuth token, verify a sender name, send a test SMS to yourself.</div></div>
+  <div class="step"><div class="step-num">5c</div><div class="step-text"><strong>Contact Turno for API access.</strong> Email them now. This runs in the background while we build everything else.</div></div>
+  <div class="step"><div class="step-num">5d</div><div class="step-text"><strong>Get Anthropic API key.</strong> Create a key at console.anthropic.com if you don't have one already.</div></div>
+  <div class="step"><div class="step-num">5e</div><div class="step-text"><strong>Set all env variables</strong> in your Trigger.dev project and Render deployment.</div></div>
+
+  <div class="accent-card accent-teal">
+    <h4>After Phase 0</h4>
+    <p>Once we've inspected the webhook payload and all services are connected, we'll know exactly what data we're working with and can proceed to building the actual agent workflow. If the payload is missing key fields (like property UUID or sender type), we'll adjust the setup phase steps in the main workflow accordingly.</p>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

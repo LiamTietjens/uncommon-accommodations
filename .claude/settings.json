@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | { read -r cmd; case \"$cmd\" in *printenv*|*'cat .env'*|*'cat *.env'*|*'head .env'*|*'tail .env'*|*'less .env'*|*'more .env'*|*'echo $'*|*'modal secret list'*|*'modal secret get'*) echo '{\"decision\":\"block\",\"reason\":\"Blocked: command may expose secrets or API keys\"}'; exit 0;; esac; if echo \"$cmd\" | grep -qE '^(env|export)$'; then echo '{\"decision\":\"block\",\"reason\":\"Blocked: command may expose secrets or API keys\"}'; exit 0; fi; if echo \"$cmd\" | grep -qE '\\bprintenv\\b'; then echo '{\"decision\":\"block\",\"reason\":\"Blocked: command may expose secrets or API keys\"}'; exit 0; fi; }",
+            "timeout": 5,
+            "statusMessage": "Checking for secret exposure..."
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read -r f; case \"$f\" in */.env|*/.env.*|*/run-supabase-mcp.sh) echo '{\"decision\":\"block\",\"reason\":\"Blocked: .env files contain secrets\"}'; exit 0;; esac; }",
+            "timeout": 5,
+            "statusMessage": "Checking for secret file access..."
+          }
+        ]
+      }
+    ]
+  }
+}
