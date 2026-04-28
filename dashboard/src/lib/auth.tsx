@@ -7,6 +7,8 @@ interface Profile {
   email: string;
   full_name: string | null;
   role: "super_admin" | "member";
+  can_view_kb: boolean;
+  can_view_maintenance: boolean;
 }
 
 interface AuthState {

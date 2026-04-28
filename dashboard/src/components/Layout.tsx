@@ -6,20 +6,20 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-const nav = [
+const baseNav = [
   { to: "/", icon: Home, label: "Overview" },
-  { to: "/properties", icon: Building2, label: "Properties & KB" },
-  { to: "/tickets", icon: Wrench, label: "Maintenance" },
-  { to: "/agent-config", icon: Settings, label: "Agent Config" },
 ];
 
 const adminNav = [
+  { to: "/agent-config", icon: Settings, label: "Agent Config" },
   { to: "/users", icon: Users, label: "Users" },
   { to: "/sms-recipients", icon: Bell, label: "SMS Recipients" },
 ];
 
 export default function Layout() {
   const { user, profile, loading, isSuperAdmin, signOut } = useAuth();
+  const canViewKB = isSuperAdmin || (profile?.can_view_kb ?? false);
+  const canViewMaintenance = isSuperAdmin || (profile?.can_view_maintenance ?? false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   if (loading) return <div className="flex items-center justify-center h-screen text-base text-gray-400">Loading...</div>;
@@ -35,7 +35,11 @@ export default function Layout() {
 
         <nav className="flex-1 py-4 overflow-y-auto">
           <div className="px-4 pb-2 pt-2 text-sm font-medium text-gray-400 uppercase tracking-wider">Main</div>
-          {nav.map((n) => (
+          {[
+            ...baseNav,
+            ...(canViewKB ? [{ to: "/properties", icon: Building2, label: "Properties & KB" }] : []),
+            ...(canViewMaintenance ? [{ to: "/tickets", icon: Wrench, label: "Maintenance" }] : []),
+          ].map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
