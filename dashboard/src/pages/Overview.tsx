@@ -30,13 +30,13 @@ export default function Overview() {
 
   return (
     <div>
-      <h1 className="text-base font-semibold text-gray-900 mb-4">Overview</h1>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <h1 className="text-lg font-semibold text-gray-900 mb-5">Overview</h1>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {cards.map((c) => (
-          <div key={c.label} className="bg-white border border-gray-200 rounded-lg p-4">
-            <c.icon size={14} className={`${c.color} mb-2`} strokeWidth={1.5} />
-            <div className="text-lg font-semibold text-gray-900">{c.value}</div>
-            <div className="text-[11px] text-gray-400">{c.label}</div>
+          <div key={c.label} className="bg-white border border-gray-200 rounded-lg p-5">
+            <c.icon size={20} className={`${c.color} mb-2`} strokeWidth={1.5} />
+            <div className="text-2xl font-semibold text-gray-900">{c.value}</div>
+            <div className="text-sm text-gray-400">{c.label}</div>
           </div>
         ))}
       </div>

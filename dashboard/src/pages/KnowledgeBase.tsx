@@ -60,20 +60,20 @@ export default function KnowledgeBase() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-base font-semibold text-gray-900">Knowledge Base</h1>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-lg font-semibold text-gray-900">Knowledge Base</h1>
+        <div className="flex items-center gap-3">
           <select
             value={filterProp}
             onChange={(e) => setFilterProp(e.target.value)}
-            className="px-2 py-1 text-[11px] border border-gray-200 rounded bg-white"
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded bg-white"
           >
             <option value="">All properties</option>
             {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <button onClick={() => { setCreating(true); setEditing({ id: "", property_id: properties[0]?.id ?? "", title: "", content: "", video_url: null, image_url: null, category: "general" }); }}
-            className="flex items-center gap-1 px-3 py-1 text-[11px] font-medium bg-gray-900 text-white rounded hover:bg-gray-800">
-            <Plus size={12} /> Add Entry
+            className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium bg-gray-900 text-white rounded hover:bg-gray-800">
+            <Plus size={16} /> Add Entry
           </button>
         </div>
       </div>
@@ -82,27 +82,27 @@ export default function KnowledgeBase() {
         <EntryForm entry={editing!} properties={properties} onSave={save} onCancel={() => { setEditing(null); setCreating(false); }} isNew={creating} />
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {entries.map((e) => (
-          <div key={e.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <div key={e.id} className="bg-white border border-gray-200 rounded-lg px-5 py-4">
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[12px] font-medium text-gray-900">{e.title}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{e.category}</span>
+                  <span className="text-sm font-medium text-gray-900">{e.title}</span>
+                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded">{e.category}</span>
                 </div>
-                <div className="text-[11px] text-gray-400 mt-0.5">{(e.properties as any)?.name}</div>
-                <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{e.content}</div>
+                <div className="text-sm text-gray-400 mt-0.5">{(e.properties as any)?.name}</div>
+                <div className="text-sm text-gray-500 mt-1 line-clamp-2">{e.content}</div>
               </div>
               <div className="flex items-center gap-1 ml-4 shrink-0">
-                <button onClick={() => setEditing(e)} className="p-1 text-gray-300 hover:text-gray-500"><Pencil size={12} /></button>
-                <button onClick={() => remove(e.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                <button onClick={() => setEditing(e)} className="p-1.5 text-gray-300 hover:text-gray-500"><Pencil size={16} /></button>
+                <button onClick={() => remove(e.id)} className="p-1.5 text-gray-300 hover:text-red-500"><Trash2 size={16} /></button>
               </div>
             </div>
           </div>
         ))}
         {entries.length === 0 && !creating && (
-          <div className="text-center py-8 text-[11px] text-gray-400">No entries yet. Add your first knowledge base entry.</div>
+          <div className="text-center py-8 text-sm text-gray-400">No entries yet. Add your first knowledge base entry.</div>
         )}
       </div>
     </div>
@@ -116,49 +116,49 @@ function EntryForm({ entry, properties, onSave, onCancel, isNew }: {
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-      <div className="text-[12px] font-medium text-gray-900 mb-3">{isNew ? "New Entry" : "Edit Entry"}</div>
-      <div className="grid grid-cols-2 gap-3 mb-3">
+    <div className="bg-white border border-gray-200 rounded-lg p-5 mb-4">
+      <div className="text-sm font-medium text-gray-900 mb-3">{isNew ? "New Entry" : "Edit Entry"}</div>
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <label className="block">
-          <span className="text-[10px] text-gray-400 font-medium uppercase">Property</span>
+          <span className="text-xs text-gray-400 font-medium uppercase">Property</span>
           <select value={form.property_id} onChange={(e) => set("property_id", e.target.value)} disabled={!isNew}
-            className="mt-0.5 w-full px-2 py-1 text-[11px] border border-gray-200 rounded bg-white disabled:bg-gray-50">
+            className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded bg-white disabled:bg-gray-50">
             {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </label>
         <label className="block">
-          <span className="text-[10px] text-gray-400 font-medium uppercase">Category</span>
+          <span className="text-xs text-gray-400 font-medium uppercase">Category</span>
           <select value={form.category} onChange={(e) => set("category", e.target.value)}
-            className="mt-0.5 w-full px-2 py-1 text-[11px] border border-gray-200 rounded bg-white">
+            className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded bg-white">
             {["general", "check-in", "amenity", "maintenance", "house-rules", "local-tips"].map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
       </div>
-      <label className="block mb-3">
-        <span className="text-[10px] text-gray-400 font-medium uppercase">Title</span>
+      <label className="block mb-4">
+        <span className="text-xs text-gray-400 font-medium uppercase">Title</span>
         <input value={form.title} onChange={(e) => set("title", e.target.value)}
-          className="mt-0.5 w-full px-2 py-1 text-[11px] border border-gray-200 rounded" placeholder="e.g. WiFi Password" />
+          className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded" placeholder="e.g. WiFi Password" />
       </label>
-      <label className="block mb-3">
-        <span className="text-[10px] text-gray-400 font-medium uppercase">Content</span>
+      <label className="block mb-4">
+        <span className="text-xs text-gray-400 font-medium uppercase">Content</span>
         <textarea value={form.content} onChange={(e) => set("content", e.target.value)} rows={3}
-          className="mt-0.5 w-full px-2 py-1 text-[11px] border border-gray-200 rounded resize-y" placeholder="The full answer..." />
+          className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded resize-y" placeholder="The full answer..." />
       </label>
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <label className="block">
-          <span className="text-[10px] text-gray-400 font-medium uppercase">Video URL (optional)</span>
+          <span className="text-xs text-gray-400 font-medium uppercase">Video URL (optional)</span>
           <input value={form.video_url ?? ""} onChange={(e) => set("video_url", e.target.value)}
-            className="mt-0.5 w-full px-2 py-1 text-[11px] border border-gray-200 rounded" />
+            className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded" />
         </label>
         <label className="block">
-          <span className="text-[10px] text-gray-400 font-medium uppercase">Image URL (optional)</span>
+          <span className="text-xs text-gray-400 font-medium uppercase">Image URL (optional)</span>
           <input value={form.image_url ?? ""} onChange={(e) => set("image_url", e.target.value)}
-            className="mt-0.5 w-full px-2 py-1 text-[11px] border border-gray-200 rounded" />
+            className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded" />
         </label>
       </div>
       <div className="flex justify-end gap-2">
-        <button onClick={onCancel} className="flex items-center gap-1 px-3 py-1 text-[11px] text-gray-500 hover:text-gray-700"><X size={12} /> Cancel</button>
-        <button onClick={() => onSave(form)} className="flex items-center gap-1 px-3 py-1 text-[11px] font-medium bg-gray-900 text-white rounded hover:bg-gray-800"><Check size={12} /> Save</button>
+        <button onClick={onCancel} className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-gray-500 hover:text-gray-700"><X size={16} /> Cancel</button>
+        <button onClick={() => onSave(form)} className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium bg-gray-900 text-white rounded hover:bg-gray-800"><Check size={16} /> Save</button>
       </div>
     </div>
   );

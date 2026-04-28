@@ -60,46 +60,46 @@ export default function Users() {
 
   return (
     <div>
-      <h1 className="text-base font-semibold text-gray-900 mb-4">User Management</h1>
+      <h1 className="text-lg font-semibold text-gray-900 mb-5">User Management</h1>
 
       {/* Invite */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-        <div className="text-[11px] font-medium text-gray-900 mb-2">Invite New User</div>
-        <div className="flex gap-2 items-end">
+      <div className="bg-white border border-gray-200 rounded-lg p-5 mb-5">
+        <div className="text-sm font-medium text-gray-900 mb-3">Invite New User</div>
+        <div className="flex gap-3 items-end">
           <label className="flex-1">
-            <span className="text-[10px] text-gray-400">Email</span>
+            <span className="text-xs text-gray-400">Email</span>
             <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)}
-              className="mt-0.5 w-full px-2 py-1 text-[11px] border border-gray-200 rounded" placeholder="user@example.com" />
+              className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded" placeholder="user@example.com" />
           </label>
           <label className="flex-1">
-            <span className="text-[10px] text-gray-400">Temporary Password</span>
+            <span className="text-xs text-gray-400">Temporary Password</span>
             <input value={invitePassword} onChange={(e) => setInvitePassword(e.target.value)} type="password"
-              className="mt-0.5 w-full px-2 py-1 text-[11px] border border-gray-200 rounded" placeholder="min 6 characters" />
+              className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded" placeholder="min 6 characters" />
           </label>
           <button onClick={invite} disabled={inviting}
-            className="flex items-center gap-1 px-3 py-1 text-[11px] font-medium bg-gray-900 text-white rounded hover:bg-gray-800 disabled:opacity-50 shrink-0">
-            <Plus size={12} /> {inviting ? "..." : "Invite"}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium bg-gray-900 text-white rounded hover:bg-gray-800 disabled:opacity-50 shrink-0">
+            <Plus size={16} /> {inviting ? "..." : "Invite"}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* User list */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 border-b border-gray-100 text-[10px] text-gray-400 uppercase tracking-wider font-medium">Users</div>
+          <div className="px-4 py-3 border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wider font-medium">Users</div>
           {users.map((u) => (
             <div key={u.id} onClick={() => setSelectedUser(u.id)}
-              className={`flex items-center justify-between px-4 py-2 cursor-pointer border-b border-gray-50 ${selectedUser === u.id ? "bg-gray-50" : "hover:bg-gray-50/50"}`}>
+              className={`flex items-center justify-between px-4 py-3 cursor-pointer border-b border-gray-50 ${selectedUser === u.id ? "bg-gray-50" : "hover:bg-gray-50/50"}`}>
               <div>
-                <div className="text-[12px] text-gray-900">{u.email}</div>
-                <div className="text-[10px] text-gray-400">{u.full_name || "No name"}</div>
+                <div className="text-sm text-gray-900">{u.email}</div>
+                <div className="text-xs text-gray-400">{u.full_name || "No name"}</div>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${u.role === "super_admin" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`text-xs px-2 py-0.5 rounded font-medium ${u.role === "super_admin" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-500"}`}>
                   {u.role === "super_admin" ? "Admin" : "Member"}
                 </span>
                 <button onClick={(e) => { e.stopPropagation(); toggleRole(u.id, u.role); }} title="Toggle role"
-                  className="p-1 text-gray-300 hover:text-purple-500"><Shield size={12} /></button>
+                  className="p-1.5 text-gray-300 hover:text-purple-500"><Shield size={16} /></button>
               </div>
             </div>
           ))}
@@ -107,16 +107,16 @@ export default function Users() {
 
         {/* Property access */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 border-b border-gray-100 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
+          <div className="px-4 py-3 border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wider font-medium">
             Property Access {selectedUser ? `— ${users.find((u) => u.id === selectedUser)?.email}` : ""}
           </div>
           {!selectedUser ? (
-            <div className="px-4 py-8 text-center text-[11px] text-gray-400">Select a user to manage access</div>
+            <div className="px-4 py-8 text-center text-sm text-gray-400">Select a user to manage access</div>
           ) : (
             <>
-              <div className="px-4 py-2 border-b border-gray-50">
+              <div className="px-4 py-3 border-b border-gray-50">
                 <select onChange={(e) => { if (e.target.value) addAccess(e.target.value); e.target.value = ""; }}
-                  className="w-full px-2 py-1 text-[11px] border border-gray-200 rounded bg-white">
+                  className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded bg-white">
                   <option value="">+ Assign property...</option>
                   {properties.filter((p) => !userAccess.some((a) => a.property_id === p.id)).map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
@@ -124,15 +124,15 @@ export default function Users() {
                 </select>
               </div>
               {userAccess.map((a) => (
-                <div key={a.id} className="flex items-center justify-between px-4 py-2 border-b border-gray-50">
-                  <div className="flex items-center gap-2 text-[12px] text-gray-700">
-                    <Building2 size={12} className="text-gray-400" /> {(a.properties as any)?.name}
+                <div key={a.id} className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <Building2 size={16} className="text-gray-400" /> {(a.properties as any)?.name}
                   </div>
-                  <button onClick={() => removeAccess(a.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                  <button onClick={() => removeAccess(a.id)} className="p-1.5 text-gray-300 hover:text-red-500"><Trash2 size={16} /></button>
                 </div>
               ))}
               {userAccess.length === 0 && (
-                <div className="px-4 py-4 text-center text-[11px] text-gray-400">No properties assigned. Admins have access to all.</div>
+                <div className="px-4 py-6 text-center text-sm text-gray-400">No properties assigned. Admins have access to all.</div>
               )}
             </>
           )}

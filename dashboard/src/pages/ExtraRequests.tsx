@@ -27,32 +27,32 @@ export default function ExtraRequests() {
 
   return (
     <div>
-      <h1 className="text-base font-semibold text-gray-900 mb-4">Extra Requests</h1>
+      <h1 className="text-lg font-semibold text-gray-900 mb-5">Extra Requests</h1>
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full text-[12px]">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 text-[10px] text-gray-400 uppercase tracking-wider">
-              <th className="text-left px-4 py-2 font-medium">Property</th>
-              <th className="text-left px-4 py-2 font-medium">Item</th>
-              <th className="text-left px-4 py-2 font-medium">Status</th>
-              <th className="text-left px-4 py-2 font-medium">Turno ID</th>
-              <th className="text-left px-4 py-2 font-medium">Date</th>
+            <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wider">
+              <th className="text-left px-4 py-3 font-medium">Property</th>
+              <th className="text-left px-4 py-3 font-medium">Item</th>
+              <th className="text-left px-4 py-3 font-medium">Status</th>
+              <th className="text-left px-4 py-3 font-medium">Turno ID</th>
+              <th className="text-left px-4 py-3 font-medium">Date</th>
             </tr>
           </thead>
           <tbody>
             {requests.map((r) => (
               <tr key={r.id} className="border-b border-gray-50">
-                <td className="px-4 py-2 text-gray-900">{(r.properties as any)?.name}</td>
-                <td className="px-4 py-2 text-gray-700">{r.item_requested}</td>
-                <td className="px-4 py-2">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${statusColor[r.status] ?? "bg-gray-100 text-gray-500"}`}>{r.status}</span>
+                <td className="px-4 py-3 text-gray-900">{(r.properties as any)?.name}</td>
+                <td className="px-4 py-3 text-gray-700">{r.item_requested}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusColor[r.status] ?? "bg-gray-100 text-gray-500"}`}>{r.status}</span>
                 </td>
-                <td className="px-4 py-2 text-gray-400 text-[10px]">{r.turno_project_id || "—"}</td>
-                <td className="px-4 py-2 text-gray-400 text-[10px]">{new Date(r.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs">{r.turno_project_id || "—"}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs">{new Date(r.created_at).toLocaleDateString()}</td>
               </tr>
             ))}
             {requests.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-[11px]">No extra requests yet.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">No extra requests yet.</td></tr>
             )}
           </tbody>
         </table>

@@ -49,44 +49,44 @@ export default function Tickets() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-base font-semibold text-gray-900">Maintenance Tickets</h1>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-lg font-semibold text-gray-900">Maintenance Tickets</h1>
         <div className="flex gap-1">
           {["open", "in_progress", "resolved", "all"].map((s) => (
             <button key={s} onClick={() => setFilter(s)}
-              className={`px-2 py-0.5 text-[10px] rounded ${filter === s ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+              className={`px-3 py-1 text-xs rounded ${filter === s ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
               {s === "all" ? "All" : s.replace("_", " ")}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {tickets.map((t) => (
-          <div key={t.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <div key={t.id} className="bg-white border border-gray-200 rounded-lg px-5 py-4">
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[12px] font-medium text-gray-900">{(t.properties as any)?.name}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${urgencyColor[t.urgency] ?? "bg-gray-100 text-gray-500"}`}>{t.urgency}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${statusColor[t.status] ?? "bg-gray-100 text-gray-500"}`}>{t.status.replace("_", " ")}</span>
+                  <span className="text-sm font-medium text-gray-900">{(t.properties as any)?.name}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${urgencyColor[t.urgency] ?? "bg-gray-100 text-gray-500"}`}>{t.urgency}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusColor[t.status] ?? "bg-gray-100 text-gray-500"}`}>{t.status.replace("_", " ")}</span>
                 </div>
-                <div className="text-[11px] text-gray-700">{t.description}</div>
-                <div className="text-[10px] text-gray-400 mt-1">{new Date(t.created_at).toLocaleString()}</div>
+                <div className="text-sm text-gray-700">{t.description}</div>
+                <div className="text-xs text-gray-400 mt-1">{new Date(t.created_at).toLocaleString()}</div>
               </div>
               {isSuperAdmin && t.status !== "resolved" && (
                 <div className="flex gap-1 ml-4 shrink-0">
                   {t.status === "open" && (
-                    <button onClick={() => updateStatus(t.id, "in_progress")} className="px-2 py-0.5 text-[10px] bg-blue-50 text-blue-700 rounded hover:bg-blue-100">In Progress</button>
+                    <button onClick={() => updateStatus(t.id, "in_progress")} className="px-3 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100">In Progress</button>
                   )}
-                  <button onClick={() => updateStatus(t.id, "resolved")} className="px-2 py-0.5 text-[10px] bg-green-50 text-green-700 rounded hover:bg-green-100">Resolve</button>
+                  <button onClick={() => updateStatus(t.id, "resolved")} className="px-3 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">Resolve</button>
                 </div>
               )}
             </div>
           </div>
         ))}
         {tickets.length === 0 && (
-          <div className="text-center py-8 text-[11px] text-gray-400">No tickets found.</div>
+          <div className="text-center py-8 text-sm text-gray-400">No tickets found.</div>
         )}
       </div>
     </div>
