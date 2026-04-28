@@ -32,64 +32,64 @@ export default function SmsRecipients() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-lg font-semibold text-gray-900">SMS Recipients</h1>
-        <button onClick={() => setAdding(!adding)} className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium bg-gray-900 text-white rounded hover:bg-gray-800">
-          <Plus size={16} /> Add Recipient
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold text-gray-900">SMS Recipients</h1>
+        <button onClick={() => setAdding(!adding)} className="flex items-center gap-2 px-5 py-2 text-base font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800">
+          <Plus size={20} /> Add Recipient
         </button>
       </div>
 
       {adding && (
-        <div className="bg-white border border-gray-200 rounded-lg p-5 mb-5">
-          <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6">
+          <div className="grid grid-cols-2 gap-5 mb-5">
             <label className="block">
-              <span className="text-xs text-gray-400 font-medium uppercase">Name</span>
+              <span className="text-sm text-gray-400 font-medium uppercase">Name</span>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded" placeholder="Tyler" />
+                className="mt-1.5 w-full px-4 py-2 text-base border border-gray-200 rounded-lg" placeholder="Tyler" />
             </label>
             <label className="block">
-              <span className="text-xs text-gray-400 font-medium uppercase">Phone (with country code)</span>
+              <span className="text-sm text-gray-400 font-medium uppercase">Phone (with country code)</span>
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="mt-1 w-full px-3 py-1.5 text-sm border border-gray-200 rounded" placeholder="44791234567" />
+                className="mt-1.5 w-full px-4 py-2 text-base border border-gray-200 rounded-lg" placeholder="44791234567" />
             </label>
           </div>
-          <div className="flex gap-5 mb-4">
+          <div className="flex gap-6 mb-5">
             {(["receives_maintenance", "receives_kb_gaps", "receives_extras"] as const).map((f) => (
-              <label key={f} className="flex items-center gap-2 text-sm text-gray-600">
-                <input type="checkbox" checked={form[f]} onChange={(e) => setForm({ ...form, [f]: e.target.checked })} className="rounded" />
+              <label key={f} className="flex items-center gap-2 text-base text-gray-600">
+                <input type="checkbox" checked={form[f]} onChange={(e) => setForm({ ...form, [f]: e.target.checked })} className="rounded w-5 h-5" />
                 {f.replace("receives_", "").replace("_", " ")}
               </label>
             ))}
           </div>
-          <button onClick={add} className="px-4 py-1.5 text-sm font-medium bg-gray-900 text-white rounded hover:bg-gray-800">Save</button>
+          <button onClick={add} className="px-5 py-2 text-base font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800">Save</button>
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <table className="w-full text-base">
           <thead>
-            <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wider">
-              <th className="text-left px-4 py-3 font-medium">Name</th>
-              <th className="text-left px-4 py-3 font-medium">Phone</th>
-              <th className="text-center px-4 py-3 font-medium">Maintenance</th>
-              <th className="text-center px-4 py-3 font-medium">KB Gaps</th>
-              <th className="text-center px-4 py-3 font-medium">Extras</th>
-              <th className="px-4 py-3 font-medium" />
+            <tr className="border-b border-gray-100 text-sm text-gray-400 uppercase tracking-wider">
+              <th className="text-left px-5 py-4 font-medium">Name</th>
+              <th className="text-left px-5 py-4 font-medium">Phone</th>
+              <th className="text-center px-5 py-4 font-medium">Maintenance</th>
+              <th className="text-center px-5 py-4 font-medium">KB Gaps</th>
+              <th className="text-center px-5 py-4 font-medium">Extras</th>
+              <th className="px-5 py-4 font-medium" />
             </tr>
           </thead>
           <tbody>
             {recipients.map((r) => (
               <tr key={r.id} className="border-b border-gray-50">
-                <td className="px-4 py-3 text-gray-900">{r.name}</td>
-                <td className="px-4 py-3 text-gray-500 font-mono text-xs">{r.phone}</td>
+                <td className="px-5 py-4 text-gray-900">{r.name}</td>
+                <td className="px-5 py-4 text-gray-500 font-mono text-sm">{r.phone}</td>
                 {(["receives_maintenance", "receives_kb_gaps", "receives_extras"] as const).map((f) => (
-                  <td key={f} className="px-4 py-3 text-center">
+                  <td key={f} className="px-5 py-4 text-center">
                     <button onClick={() => toggle(r.id, f, r[f])}
-                      className={`w-5 h-5 rounded ${r[f] ? "bg-green-500" : "bg-gray-200"}`} />
+                      className={`w-6 h-6 rounded ${r[f] ? "bg-green-500" : "bg-gray-200"}`} />
                   </td>
                 ))}
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => remove(r.id)} className="p-1.5 text-gray-300 hover:text-red-500"><Trash2 size={16} /></button>
+                <td className="px-5 py-4 text-right">
+                  <button onClick={() => remove(r.id)} className="p-2 text-gray-300 hover:text-red-500"><Trash2 size={20} /></button>
                 </td>
               </tr>
             ))}

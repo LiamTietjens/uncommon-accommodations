@@ -23,35 +23,35 @@ export default function Login() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <img src="/logo.png" alt="Uncommon Accommodations" className="h-10 mx-auto mb-4" />
-          <p className="text-sm text-gray-400 mt-1">Sign in to continue</p>
+      <div className="w-full max-w-md">
+        <div className="text-center mb-10">
+          <img src="/logo.png" alt="Uncommon Accommodations" className="h-12 mx-auto mb-5" />
+          <p className="text-base text-gray-400 mt-1">Sign in to continue</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-lg p-6">
+        <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl p-8">
           {error && (
-            <div className="text-sm text-red-600 bg-red-50 rounded px-3 py-2 mb-4">{error}</div>
+            <div className="text-base text-red-600 bg-red-50 rounded-lg px-4 py-3 mb-5">{error}</div>
           )}
 
-          <label className="block mb-4">
-            <span className="text-sm text-gray-500 font-medium">Email</span>
+          <label className="block mb-5">
+            <span className="text-base text-gray-500 font-medium">Email</span>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-300"
+              className="mt-1.5 w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300"
               required
             />
           </label>
 
-          <label className="block mb-5">
-            <span className="text-sm text-gray-500 font-medium">Password</span>
+          <label className="block mb-6">
+            <span className="text-base text-gray-500 font-medium">Password</span>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-300"
+              className="mt-1.5 w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300"
               required
             />
           </label>
@@ -59,7 +59,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-2 text-sm font-medium bg-gray-900 text-white rounded hover:bg-gray-800 disabled:opacity-50"
+            className="w-full py-3 text-base font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
           >
             {submitting ? "Signing in..." : "Sign in"}
           </button>
