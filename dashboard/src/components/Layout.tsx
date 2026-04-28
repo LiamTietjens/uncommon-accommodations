@@ -1,15 +1,14 @@
 import { NavLink, Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import {
-  Home, Building2, BookOpen, Wrench, Clock, Users, Bell,
+  Home, Building2, Wrench, Clock, Users, Bell,
   AlertTriangle, Package, LogOut, Menu, X
 } from "lucide-react";
 import { useState } from "react";
 
 const nav = [
   { to: "/", icon: Home, label: "Overview" },
-  { to: "/properties", icon: Building2, label: "Properties" },
-  { to: "/knowledge-base", icon: BookOpen, label: "Knowledge Base" },
+  { to: "/properties", icon: Building2, label: "Properties & KB" },
   { to: "/tickets", icon: Wrench, label: "Maintenance" },
   { to: "/cooldowns", icon: Clock, label: "Cooldowns" },
   { to: "/extras", icon: Package, label: "Extra Requests" },
