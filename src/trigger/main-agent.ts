@@ -436,6 +436,7 @@ export const mainAgentWorkflow = task({
     const senderType = (webhookData as any)?.sender_type;
     const reservationUuid = (webhookData as any)?.reservation_id;
     const guestName = (webhookData as any)?.sender?.first_name || "Guest";
+    const webhookPropertyUuid = (webhookData as any)?.property?.id;
 
     logger.info("Webhook received", { senderType, reservationUuid, hasBody: !!messageBody });
 
@@ -462,28 +463,27 @@ export const mainAgentWorkflow = task({
       return { status: "error", reason: "no_message_body" };
     }
 
-    // Step 2: Look up property via Hospitable reservation
-    let propertyUuid: string;
+    // Step 2: Get property UUID (prefer webhook payload, fallback to reservation API)
+    let propertyUuid: string | undefined = webhookPropertyUuid;
     let reservationData: any;
-    try {
-      reservationData = await getReservation(reservationUuid);
-      // Extract property UUID from the included data or relationships
-      const included = reservationData?.included || [];
-      const propertyData = included.find((i: any) => i.type === "property" || i.type === "properties");
-      propertyUuid = propertyData?.id || reservationData?.data?.relationships?.properties?.data?.[0]?.id;
 
-      if (!propertyUuid) {
-        // Try alternate structure
-        propertyUuid = reservationData?.data?.property_uuid || reservationData?.data?.property_id;
+    if (!propertyUuid) {
+      try {
+        reservationData = await getReservation(reservationUuid);
+        const included = reservationData?.included || [];
+        const propertyData = included.find((i: any) => i.type === "property" || i.type === "properties");
+        propertyUuid = propertyData?.id || reservationData?.data?.relationships?.properties?.data?.[0]?.id;
+        if (!propertyUuid) {
+          propertyUuid = reservationData?.data?.property_uuid || reservationData?.data?.property_id;
+        }
+      } catch (e) {
+        logger.error("Failed to fetch reservation from Hospitable", { error: String(e) });
       }
+    }
 
-      if (!propertyUuid) {
-        logger.error("Could not extract property UUID from reservation", { reservationData });
-        return { status: "error", reason: "no_property_uuid" };
-      }
-    } catch (e) {
-      logger.error("Failed to fetch reservation from Hospitable", { error: String(e) });
-      return { status: "error", reason: "hospitable_reservation_fetch_failed" };
+    if (!propertyUuid) {
+      logger.error("Could not resolve property UUID", { webhookPropertyUuid, reservationData });
+      return { status: "error", reason: "no_property_uuid" };
     }
 
     // Step 3: Map to our Supabase property
