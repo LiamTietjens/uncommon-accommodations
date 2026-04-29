@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Main Agent Workflow - Plan v3 (Merged Agent)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f9fa; color: #1a1a2e; padding: 40px 20px; }
+  h1 { text-align: center; font-size: 28px; margin-bottom: 8px; }
+  .subtitle { text-align: center; color: #666; margin-bottom: 40px; font-size: 14px; line-height: 1.6; }
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; max-width: 960px; margin: 0 auto; }
+
+  .node { position: relative; padding: 16px 24px; border-radius: 12px; text-align: center; min-width: 320px; max-width: 700px; }
+  .node .label { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .node .detail { font-size: 12px; opacity: 0.85; line-height: 1.5; }
+  .node .api-badge { display: inline-block; background: rgba(0,0,0,0.08); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; margin-top: 6px; }
+
+  .trigger { background: #1a1a2e; color: white; border-radius: 20px; }
+  .step { background: white; border: 2px solid #ddd; }
+  .decision { background: #fff3cd; border: 2px solid #ffc107; }
+  .ai-call { background: #e8f4fd; border: 2px solid #2196F3; }
+  .ai-call .label::before { content: '🤖 '; }
+  .api-call { background: #f3e8fd; border: 2px solid #9c27b0; }
+  .api-call .label::before { content: '🔌 '; }
+  .db-op { background: #e8fde8; border: 2px solid #4CAF50; }
+  .db-op .label::before { content: '💾 '; }
+  .sms-op { background: #fde8e8; border: 2px solid #f44336; }
+  .sms-op .label::before { content: '📱 '; }
+  .terminate { background: #f44336; color: white; border-radius: 20px; }
+  .success { background: #4CAF50; color: white; border-radius: 20px; }
+
+  .arrow { width: 2px; height: 24px; background: #999; position: relative; }
+  .arrow::after { content: ''; position: absolute; bottom: -5px; left: -4px; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid #999; }
+  .arrow-label { font-size: 11px; color: #666; text-align: center; margin: -4px 0; font-style: italic; }
+
+  .section { width: 100%; max-width: 900px; margin: 30px 0 10px 0; padding: 8px 20px; background: #1a1a2e; color: white; border-radius: 8px; font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; text-align: center; }
+
+  .sub-workflow { border: 2px dashed #999; border-radius: 16px; padding: 24px; margin: 10px 0; width: 100%; max-width: 900px; }
+  .sub-workflow-title { font-weight: 700; font-size: 16px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #ddd; }
+  .sub-workflow .flow { gap: 0; }
+  .sw-a { border-color: #2196F3; background: #f8fbff; }
+  .sw-a .sub-workflow-title { color: #2196F3; }
+  .sw-b { border-color: #ff9800; background: #fffdf5; }
+  .sw-b .sub-workflow-title { color: #ff9800; }
+  .sw-c { border-color: #9c27b0; background: #fdf5ff; }
+  .sw-c .sub-workflow-title { color: #9c27b0; }
+  .sw-d { border-color: #f44336; background: #fff5f5; }
+  .sw-d .sub-workflow-title { color: #f44336; }
+
+  .prompt-box { background: #1a1a2e; color: #e0e0e0; border-radius: 10px; padding: 16px 20px; margin: 10px 0; text-align: left; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-width: 900px; overflow-x: auto; }
+  .prompt-box .var { color: #64ffda; font-weight: 600; }
+  .prompt-box .comment { color: #757575; }
+  .prompt-box .heading { color: #ffd54f; font-weight: 700; }
+  .prompt-box .user-msg { color: #ce93d8; }
+  .prompt-label { font-size: 12px; font-weight: 700; color: #1565c0; margin: 8px 0 2px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .change-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; margin-bottom: 8px; }
+
+  .note { background: #fffde7; border: 1px solid #ffd54f; border-radius: 8px; padding: 10px 16px; font-size: 12px; margin: 8px 0; max-width: 700px; line-height: 1.5; }
+  .note strong { color: #e65100; }
+
+  .loop-indicator { background: #e3f2fd; border: 2px solid #1976d2; border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #1976d2; font-weight: 600; margin: 4px 0; }
+
+  .branch-container { display: flex; gap: 20px; align-items: flex-start; justify-content: center; width: 100%; margin: 12px 0; }
+  .branch { display: flex; flex-direction: column; align-items: center; gap: 0; flex: 1; max-width: 260px; }
+  .branch .node { min-width: 180px; max-width: 250px; font-size: 12px; padding: 12px 16px; }
+  .branch .node .label { font-size: 12px; }
+  .branch .node .detail { font-size: 11px; }
+  .branch .arrow { height: 18px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin: 40px auto 30px auto; padding: 16px; background: white; border-radius: 12px; border: 1px solid #ddd; max-width: 900px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .legend-swatch { width: 20px; height: 14px; border-radius: 4px; border: 2px solid; }
+
+  .tool-def { background: white; border: 1px solid #ddd; border-radius: 10px; padding: 14px 18px; margin: 6px 0; text-align: left; max-width: 700px; }
+  .tool-def .tool-name { font-family: monospace; font-weight: 700; font-size: 13px; color: #e65100; }
+  .tool-def .tool-desc { font-size: 12px; color: #555; margin-top: 4px; }
+  .tool-def .tool-params { font-size: 11px; color: #777; margin-top: 4px; font-family: monospace; }
+
+  .sms-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+  .sms-table th, .sms-table td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+  .sms-table th { background: #f5f5f5; font-weight: 600; }
+
+  .dupwarn { background: #ffebee; border: 1px solid #ef9a9a; color: #c62828; border-radius: 6px; padding: 4px 10px; font-size: 11px; margin: 4px 0; display: inline-block; }
+</style>
+</head>
+<body>
+
+<h1>Main Agent Workflow &mdash; Plan v3</h1>
+<p class="subtitle">
+  Single agent with tool-use. Coordinator + Reply Composer merged into one conversation.<br>
+  Max 2 AI calls per request (Main Agent + one sub-workflow AI call). Path D = 1 AI call only, no reply.
+</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#e8f4fd;border-color:#2196F3;"></div> AI Call (Claude Sonnet 4.6)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#f3e8fd;border-color:#9c27b0;"></div> External API</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#e8fde8;border-color:#4CAF50;"></div> Database (Supabase)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#fde8e8;border-color:#f44336;"></div> SMS (SMSAPI)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#fff3cd;border-color:#ffc107;"></div> Decision / Branch</div>
+</div>
+
+<div class="flow">
+
+  <!-- ═══════════ PHASE 1 ═══════════ -->
+  <div class="section">Phase 1 &mdash; Setup &amp; Validation</div>
+
+  <div class="node trigger">
+    <div class="label">Webhook Received</div>
+    <div class="detail">Hospitable <code>message.created</code> &rarr; Modal webhook.py &rarr; Trigger.dev HTTP POST</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node step">
+    <div class="label">Step 1: Extract Webhook Data</div>
+    <div class="detail">Parse: <code>body</code>, <code>sender_type</code>, <code>reservation_id</code>, <code>guest_name</code><br>Handles nested and flat structures</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node decision"><div class="label">Gate 1: sender_type === "host"?</div></div>
+  <div class="arrow-label">YES &rarr; skip</div>
+  <div class="arrow"></div>
+
+  <div class="node decision"><div class="label">Gate 2: Reservation in test allowlist?</div><div class="detail">TESTING ONLY &mdash; remove for production</div></div>
+  <div class="arrow-label">NO &rarr; skip</div>
+  <div class="arrow"></div>
+
+  <div class="node decision"><div class="label">Gate 3: Has reservation_id?</div></div>
+  <div class="arrow-label">NO &rarr; error</div>
+  <div class="arrow"></div>
+
+  <div class="node decision"><div class="label">Gate 4: Has message body?</div></div>
+  <div class="arrow-label">NO &rarr; error</div>
+  <div class="arrow"></div>
+
+  <div class="node api-call">
+    <div class="label">Step 2: Fetch Reservation from Hospitable</div>
+    <div class="api-badge">GET /v2/reservations/{uuid}?include=properties</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node decision"><div class="label">Gate 5: Property UUID extracted?</div></div>
+  <div class="arrow-label">NO &rarr; error</div>
+  <div class="arrow"></div>
+
+  <div class="node db-op">
+    <div class="label">Step 3: Map to Supabase Property</div>
+    <div class="api-badge">SELECT * FROM properties WHERE hospitable_property_uuid = ?</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node decision"><div class="label">Gate 6: Property found?</div></div>
+  <div class="arrow-label">NO &rarr; error</div>
+  <div class="arrow"></div>
+
+  <div class="node db-op">
+    <div class="label">Step 4: Cooldown Check</div>
+    <div class="detail">Per-property. Auto-expires via <code>expires_at > now()</code></div>
+    <div class="api-badge">SELECT * FROM cooldowns WHERE property_id = ? AND is_active = true AND expires_at > now()</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node decision"><div class="label">Gate 7: Active cooldown?</div></div>
+  <div class="arrow-label">YES &rarr; skip (auto-resumes after expires_at)</div>
+  <div class="arrow"></div>
+
+  <div class="node api-call">
+    <div class="label">Step 5: Load Conversation History</div>
+    <div class="detail">On failure: falls back to latest message only (does NOT abort)</div>
+    <div class="api-badge">GET /v2/reservations/{uuid}/messages</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node step">
+    <div class="label">Build AgentContext</div>
+    <div class="detail"><code>{ propertyId, propertyName, reservationUuid, conversationHistory[], latestMessage, guestName, turnoPropertyId }</code></div>
+  </div>
+
+  <!-- ═══════════ PHASE 2 ═══════════ -->
+  <div class="section">Phase 2 &mdash; Main Agent (Single Tool-Use Call + Tool Result &rarr; Reply)</div>
+
+  <div class="arrow"></div>
+
+  <div class="node ai-call" style="max-width: 900px;">
+    <div class="label">Main Agent (AI Call #1) &mdash; Tool-Use with Reply</div>
+    <div class="detail">
+      Single API call. Claude reads the conversation, calls ONE tool, gets the result back, and composes the guest reply &mdash; all in the same conversation turn.
+    </div>
+    <div class="api-badge">anthropic.messages.create({ model: "claude-sonnet-4-6", max_tokens: 1024, tools: TOOLS })</div>
+  </div>
+
+  <div class="prompt-label">System Prompt &mdash; Main Agent (AI Call #1)</div>
+  <div class="prompt-box"><span class="heading"># You don't know anything or can't help with anything except for what's inside this prompt and the tool calls.</span>
+
+<span class="heading"># Role</span>
+You are an AI that responds to guest questions and handles the inbox of Uncommon Accommodations short-term rentals business.
+
+<span class="heading"># Language</span>
+Detect the language the guest is writing in and reply in that same language.
+
+<span class="heading"># Context</span>
+Guests are messaging you through either Airbnb, Booking.com, another channel platform, or email because they've booked a stay and have a question, a maintenance request, or a request for a special item.
+
+Property: <span class="var">${property.name}</span>
+Guest name: <span class="var">${guestName}</span>
+
+<span class="heading"># Step by Step</span>
+1. Read the full conversation to understand context and tone.
+2. Focus on the guest's latest message.
+3. Classify the request and call the appropriate tool:
+   - <span style="color:#ffcc80">use_knowledge_base</span> — Guest is asking a question about the property
+     (wifi, parking, check-in, amenities, house rules, local tips, etc.)
+   - <span style="color:#ffcc80">raise_maintenance_ticket</span> — Guest is reporting something broken,
+     leaking, not working, damaged, or requiring physical repair.
+   - <span style="color:#ffcc80">process_extra_request</span> — Guest is requesting an additional item
+     or service (towels, toiletries, blankets, pillows, etc.)
+   - <span style="color:#ffcc80">escalate_to_human</span> — The request doesn't fit any category above,
+     or it's a complaint, billing issue, or something you can't handle.
+4. After receiving the tool result, decide what to do:
+   - If the tool result indicates escalation — do NOT reply to the guest. Stay silent.
+   - Otherwise — compose a warm, concise reply to the guest based on the tool result.
+     Do not mention internal systems, tickets, tools, or databases.</div>
+
+  <div class="prompt-label">User Message &mdash; Coordinator (AI Call #1)</div>
+  <div class="prompt-box"><span class="user-msg">Here is the conversation so far:
+
+<span class="var">${historyText}</span>
+
+The guest's latest message is:
+"<span class="var">${messageBody}</span>"</span></div>
+
+  <div style="margin: 12px 0; max-width: 900px;">
+    <div style="font-weight: 700; margin-bottom: 8px; font-size: 14px;">4 Tools Available:</div>
+    <div class="tool-def">
+      <div class="tool-name">use_knowledge_base</div>
+      <div class="tool-desc">Search the property's knowledge base to answer a guest question about the property</div>
+      <div class="tool-params">{ query: string }</div>
+    </div>
+    <div class="tool-def">
+      <div class="tool-name">raise_maintenance_ticket</div>
+      <div class="tool-desc">Report a maintenance issue &mdash; something broken, leaking, not working, damaged</div>
+      <div class="tool-params">{ issue_description: string, guest_context: string }</div>
+    </div>
+    <div class="tool-def">
+      <div class="tool-name">process_extra_request</div>
+      <div class="tool-desc">Process a guest request for an additional item or service</div>
+      <div class="tool-params">{ item_requested: string }</div>
+    </div>
+    <div class="tool-def">
+      <div class="tool-name">escalate_to_human</div>
+      <div class="tool-desc">Escalate to human host &mdash; complaint, billing, or unhandleable request</div>
+      <div class="tool-params">{ reason: string }</div>
+    </div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node step" style="max-width: 800px;">
+    <div class="label">Agent Flow</div>
+    <div class="detail" style="text-align: left; font-size: 13px; line-height: 1.8;">
+      1. API call #1 &rarr; Claude returns <code>tool_use</code> block<br>
+      2. We execute the sub-workflow (A/B/C/D) &mdash; hard-coded function<br>
+      3. If Sub-Workflow D &rarr; <strong>TERMINATE</strong> (no reply, no second API call)<br>
+      4. Otherwise: feed <code>tool_use</code> + <code>tool_result</code> back to the same conversation<br>
+      5. API call #2 to same model, same system prompt &rarr; Claude composes the guest reply<br>
+      6. Send reply via Hospitable
+    </div>
+  </div>
+
+  <!-- ═══════════ SUB-WORKFLOWS ═══════════ -->
+  <div class="section">Sub-Workflows (executed between agent's tool call and reply)</div>
+
+  <!-- ──── SUB-WORKFLOW A ──── -->
+  <div class="sub-workflow sw-a">
+    <div class="sub-workflow-title">Sub-Workflow A: use_knowledge_base &mdash; AI Call #2 (KB Answerer)</div>
+    <div class="flow">
+      <div class="node db-op">
+        <div class="label">A1: Load ALL KB Entries for Property</div>
+        <div class="api-badge">SELECT * FROM knowledge_bases WHERE property_id = '<span style="color:#64ffda">${ctx.propertyId}</span>'</div>
+      </div>
+      <div class="arrow"></div>
+      <div class="node decision">
+        <div class="label">Any KB entries found?</div>
+      </div>
+      <div class="arrow-label">NO &rarr; return null &rarr; triggers Sub-Workflow D</div>
+      <div class="arrow"></div>
+
+      <div class="node ai-call" style="max-width: 900px;">
+        <div class="label">A2: KB Answerer (AI Call #2)</div>
+        <div class="detail">Single chat completion (no tools). Searches KB for answer.</div>
+        <div class="api-badge">anthropic.messages.create({ model: "claude-sonnet-4-6", max_tokens: 1024 })</div>
+      </div>
+
+      <div class="prompt-label">System Prompt &mdash; KB Answerer (AI Call #2)</div>
+      <div class="prompt-box"><span class="heading"># You don't know anything or can't help with anything except for what's inside this prompt.</span>
+
+<span class="heading"># Role</span>
+You are an information searcher. Search through the information and answer a guest question accurately with the provided info inside this prompt.
+
+<span class="heading"># Context</span>
+Property: <span class="var">${ctx.propertyName}</span>
+Conversation history:
+<span class="var">${historyText}</span>
+
+Knowledge base for this property:
+<span class="var">${kbText}</span>
+
+<span class="heading"># Step by Step</span>
+1. Read the guest's question carefully.
+2. Search the knowledge base entries for a relevant answer.
+3. If you find an answer:
+   - Write a warm, conversational reply in the guest's language.
+   - If the KB entry includes a video_url or image_url, include it naturally
+     in your reply.
+   - Keep it concise. Don't over-explain.
+4. If you CANNOT find the answer in the knowledge base:
+   - Do NOT guess or make up information.
+   - Respond with exactly: NO_ANSWER_FOUND
+   - Add a brief reason on the next line.
+
+<span class="heading"># Output</span>
+Either a conversational reply to the guest (using only KB content), or
+NO_ANSWER_FOUND followed by a reason. Nothing else.</div>
+
+      <div class="prompt-label">User Message &mdash; KB Answerer</div>
+      <div class="prompt-box"><span class="user-msg"><span class="var">${query}</span></span></div>
+
+      <div class="arrow"></div>
+      <div class="node decision">
+        <div class="label">Starts with "NO_ANSWER_FOUND"?</div>
+      </div>
+      <div class="arrow-label">YES &rarr; return null &rarr; Sub-Workflow D (HARD STOP)</div>
+      <div class="arrow"></div>
+      <div class="node success" style="padding: 10px 20px;">
+        <div class="label">Return answer text &rarr; fed back to Main Agent as tool_result</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 20px;"></div>
+
+  <!-- ──── SUB-WORKFLOW B ──── -->
+  <div class="sub-workflow sw-b">
+    <div class="sub-workflow-title">Sub-Workflow B: raise_maintenance_ticket &mdash; AI Call #3 (Urgency Assessor)</div>
+    <div class="flow">
+      <div class="node db-op">
+        <div class="label">B1: Load Urgency Categories</div>
+        <div class="api-badge">SELECT * FROM urgency_categories ORDER BY level</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node ai-call" style="max-width: 900px;">
+        <div class="label">B2: Urgency Assessor (AI Call #3)</div>
+        <div class="detail">Single chat completion (no tools). Classifies urgency.</div>
+        <div class="api-badge">anthropic.messages.create({ model: "claude-sonnet-4-6", max_tokens: 50 })</div>
+      </div>
+
+      <div class="prompt-label">System Prompt &mdash; Urgency Assessor (AI Call #3)</div>
+      <div class="prompt-box"><span class="heading"># Scope</span>
+You have no knowledge beyond what is provided in this prompt. You cannot help with anything outside of it. Do not guess, assume, or use external knowledge.
+
+<span class="heading"># Role</span>
+You are a maintenance urgency classifier for vacation rental properties.
+Your ONLY job is to read a maintenance issue description and assign the
+correct urgency level.
+
+<span class="heading"># Context</span>
+Maintenance issue reported by guest:
+"<span class="var">${issueDescription}</span>"
+
+Guest context:
+"<span class="var">${guestContext}</span>"
+
+Available urgency levels:
+<span class="var">${categoriesText}</span>
+
+<span class="heading"># Step by Step</span>
+1. Read the issue description carefully.
+2. Compare it against the examples for each urgency level.
+3. Consider: Does this affect guest safety? Is it time-sensitive?
+4. Select the single most appropriate urgency level.
+
+<span class="heading"># Output</span>
+Respond with ONLY the urgency level name (e.g. "high"). No explanation, no other text.</div>
+
+      <div class="prompt-label">User Message &mdash; Urgency Assessor</div>
+      <div class="prompt-box"><span class="user-msg"><span class="var">${issueDescription}</span></span></div>
+
+      <div class="arrow"></div>
+      <div class="node db-op">
+        <div class="label">B3: Create Maintenance Ticket</div>
+        <div class="api-badge">INSERT INTO maintenance_tickets (property_id, description, urgency, status='open', guest_context, reservation_uuid)</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node db-op" style="max-width: 750px;">
+        <div class="label">B4: Load SMS Recipients (filtered by urgency)</div>
+        <div class="detail">Column name built dynamically from AI output</div>
+        <div class="api-badge">SELECT * FROM sms_recipients WHERE receives_maintenance_<span style="color:#64ffda">${urgency}</span> = true AND is_active = true</div>
+      </div>
+
+      <div style="margin: 12px 0; max-width: 750px; text-align: left;">
+        <table class="sms-table">
+          <tr><th>AI Output</th><th>Column Queried</th><th>Default</th></tr>
+          <tr><td><strong>high</strong></td><td><code>receives_maintenance_high</code></td><td>true (everyone gets high by default)</td></tr>
+          <tr><td><strong>medium</strong></td><td><code>receives_maintenance_medium</code></td><td>false (opt-in)</td></tr>
+          <tr><td><strong>low</strong></td><td><code>receives_maintenance_low</code></td><td>false (opt-in)</td></tr>
+        </table>
+      </div>
+
+      <div class="arrow"></div>
+      <div class="loop-indicator">LOOP: for each matching SMS recipient</div>
+      <div class="arrow"></div>
+      <div class="node sms-op">
+        <div class="label">B4b: Send SMS</div>
+        <div class="detail">"🔧 Maintenance [{URGENCY}] at {property}: {description}"<br>On failure: logs, continues to next (does NOT abort)</div>
+        <div class="api-badge">POST https://api.smsapi.com/sms.do</div>
+      </div>
+      <div class="arrow"></div>
+      <div class="node success" style="padding: 10px 20px;">
+        <div class="label">Return result string &rarr; fed back to Main Agent as tool_result</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 20px;"></div>
+
+  <!-- ──── SUB-WORKFLOW C ──── -->
+  <div class="sub-workflow sw-c">
+    <div class="sub-workflow-title">Sub-Workflow C: process_extra_request &mdash; AI Call #4 (Extra Matcher)</div>
+    <div class="flow">
+      <div class="node db-op">
+        <div class="label">C1: Load Allowed Extras (global)</div>
+        <div class="api-badge">SELECT * FROM allowed_extras WHERE is_active = true</div>
+      </div>
+      <div class="arrow"></div>
+      <div class="node decision">
+        <div class="label">Any allowed extras configured?</div>
+      </div>
+      <div class="arrow-label">NO &rarr; isAllowed = false (skip AI call entirely)</div>
+      <div class="arrow"></div>
+
+      <div class="node ai-call" style="max-width: 900px;">
+        <div class="label">C1b: Extra Matcher (AI Call #4)</div>
+        <div class="detail">Single chat completion (no tools). Fuzzy-match YES/NO.</div>
+        <div class="api-badge">anthropic.messages.create({ model: "claude-sonnet-4-6", max_tokens: 10 })</div>
+      </div>
+
+      <div class="prompt-label">System Prompt &mdash; Extra Matcher (AI Call #4)</div>
+      <div class="prompt-box"><span class="heading"># Scope</span>
+You have no knowledge beyond what is provided in this prompt. You cannot help with anything outside of it. Do not guess, assume, or use external knowledge.
+
+<span class="heading"># Role</span>
+You decide whether a guest's request matches any item on an allowed extras
+list. The match does NOT need to be exact — use common sense. "More towels"
+matches "extra towels". "Can I get some soap" matches "toiletries". But
+"bicycle rental" does NOT match "extra towels".
+
+<span class="heading"># Context</span>
+Allowed extras for this property: <span class="var">${allowedList}</span>
+
+<span class="heading"># Output</span>
+Respond with ONLY "YES" or "NO". Nothing else.</div>
+
+      <div class="prompt-label">User Message &mdash; Extra Matcher</div>
+      <div class="prompt-box"><span class="user-msg">Guest requested: "<span class="var">${itemRequested}</span>"</span></div>
+
+      <div class="arrow"></div>
+      <div class="node decision"><div class="label">AI returned "YES"?</div></div>
+
+      <div class="branch-container">
+        <div class="branch">
+          <div class="arrow-label" style="color: #f44336; font-weight: 600;">NO &mdash; Declined</div>
+          <div class="arrow"></div>
+          <div class="node db-op">
+            <div class="label">Insert extra_request</div>
+            <div class="detail">status = "declined"<br>Logged for admin in Agent Config</div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node" style="background:#fff3cd; border: 2px solid #ffc107; padding: 10px;">
+            <div class="label" style="font-size: 11px;">Dashboard: shows in "Guest Requested but Not Allowed". Admin can Allow or Dismiss.</div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node" style="background:#ffcdd2; border: 2px solid #f44336; padding: 10px;">
+            <div class="label" style="font-size: 12px;">Return: "Declined" &rarr; Main Agent</div>
+          </div>
+        </div>
+        <div class="branch">
+          <div class="arrow-label" style="color: #4CAF50; font-weight: 600;">YES &mdash; Approved</div>
+          <div class="arrow"></div>
+          <div class="node decision" style="min-width: 180px;">
+            <div class="label" style="font-size: 12px;">turno_property_id?</div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node api-call">
+            <div class="label">Create Turno Task</div>
+            <div class="detail">On fail: still approved</div>
+            <div class="api-badge">POST /v2/projects</div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node db-op">
+            <div class="label">Insert extra_request</div>
+            <div class="detail">status = "approved"</div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node success" style="padding: 10px;">
+            <div class="label" style="font-size: 12px;">Return: "Approved" &rarr; Main Agent</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 20px;"></div>
+
+  <!-- ──── SUB-WORKFLOW D ──── -->
+  <div class="sub-workflow sw-d">
+    <div class="sub-workflow-title">Sub-Workflow D: escalate_to_human &mdash; HARD STOP (no AI, no reply)</div>
+    <div class="note"><strong>CRITICAL:</strong> No reply is EVER sent to the guest. The workflow terminates. No second API call to the Main Agent. Triggered by: explicit escalation, KB returning NO_ANSWER_FOUND, empty KB, no tool call, unknown tool.</div>
+    <div class="flow">
+      <div class="node db-op">
+        <div class="label">D1: Log KB Gap</div>
+        <div class="detail">Shows in dashboard "Unanswered Questions". Admin can click to add answer.</div>
+        <div class="api-badge">INSERT INTO kb_gap_log (property_id, guest_question, reservation_uuid)</div>
+      </div>
+      <div class="arrow"></div>
+      <div class="node db-op">
+        <div class="label">D2: Set 8-Hour Cooldown</div>
+        <div class="detail">Per-property. ALL messages ignored until expiry. Auto-resumes.</div>
+        <div class="api-badge">INSERT INTO cooldowns (property_id, expires_at = now()+8h, is_active = true)</div>
+      </div>
+      <div class="arrow"></div>
+      <div class="node db-op">
+        <div class="label">D3: Load SMS Recipients</div>
+        <div class="api-badge">SELECT * FROM sms_recipients WHERE receives_kb_gaps = true AND is_active = true</div>
+      </div>
+      <div class="arrow"></div>
+      <div class="loop-indicator">LOOP: for each matching SMS recipient</div>
+      <div class="arrow"></div>
+      <div class="node sms-op">
+        <div class="label">D3b: Send Escalation SMS</div>
+        <div class="detail">"⚠️ AI escalated at {property}: "{question}". 8hr cooldown active. Please respond manually."</div>
+        <div class="api-badge">POST https://api.smsapi.com/sms.do</div>
+      </div>
+      <div class="arrow"></div>
+      <div class="node terminate">
+        <div class="label">D4: TERMINATE &mdash; No reply. Return { status: "escalated" }</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ PHASE 3 ═══════════ -->
+  <div class="section">Phase 3 &mdash; Reply (same agent, second API call in same conversation)</div>
+  <div class="arrow"></div>
+
+  <div class="node step" style="max-width: 800px;">
+    <div class="label">Feed tool_result back to Main Agent conversation</div>
+    <div class="detail">Append: assistant's <code>tool_use</code> block + <code>tool_result</code> with the sub-workflow output string.<br>Same system prompt, same model, same conversation.</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node ai-call" style="max-width: 800px;">
+    <div class="label">Main Agent &mdash; Second Turn (same conversation, same system prompt)</div>
+    <div class="detail">Second API call in the same conversation. Same system prompt as AI Call #1. Claude sees the tool result, follows Step 4 of its instructions, and composes the guest reply.</div>
+    <div class="api-badge">anthropic.messages.create({ model: "claude-sonnet-4-6", max_tokens: 1024, system: &lt;same as #1&gt;, tools: TOOLS, messages: [...prev + tool_result] })</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node api-call">
+    <div class="label">Send Reply via Hospitable</div>
+    <div class="api-badge">POST /v2/reservations/{uuid}/messages { body: replyText }</div>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="node success">
+    <div class="label">Done &mdash; { status: "replied", tool: "{name}" }</div>
+  </div>
+
+  <!-- ═══════════ SUMMARY ═══════════ -->
+  <div class="section">Summary</div>
+
+  <div style="width: 100%; max-width: 900px; margin: 20px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+    <div style="background: white; border: 1px solid #ddd; border-radius: 12px; padding: 20px;">
+      <div style="font-weight: 700; margin-bottom: 10px; font-size: 15px;">AI Calls (max 2 per request)</div>
+      <div style="font-size: 13px; line-height: 2;">
+        <strong>#1</strong> Main Agent &mdash; tool-use + reply (2 API turns, 1 conversation)<br>
+        <strong>#2</strong> KB Answerer (only if tool = use_knowledge_base)<br>
+        <strong>#3</strong> Urgency Assessor (only if tool = raise_maintenance_ticket)<br>
+        <strong>#4</strong> Extra Matcher (only if tool = process_extra_request)<br>
+      </div>
+      <div style="font-size: 11px; color: #999; margin-top: 8px;">
+        Path A = #1 + #2 (2 calls) | Path B = #1 + #3 (2 calls) | Path C = #1 + #4 (2 calls) | Path D = #1 only (1 call, no reply)
+      </div>
+    </div>
+    <div style="background: white; border: 1px solid #ddd; border-radius: 12px; padding: 20px;">
+      <div style="font-weight: 700; margin-bottom: 10px; font-size: 15px;">SMS Alert Logic</div>
+      <div style="font-size: 13px; line-height: 2;">
+        <strong>Maintenance (Sub-B):</strong><br>
+        &nbsp;&nbsp;High &rarr; <code>receives_maintenance_high</code> (default on)<br>
+        &nbsp;&nbsp;Medium &rarr; <code>receives_maintenance_medium</code> (default off)<br>
+        &nbsp;&nbsp;Low &rarr; <code>receives_maintenance_low</code> (default off)<br>
+        <strong>Escalation (Sub-D):</strong><br>
+        &nbsp;&nbsp;<code>receives_kb_gaps = true</code><br>
+      </div>
+      <div style="font-size: 11px; color: #999; margin-top: 8px;">Both loop over all matching recipients. SMS failure = log + continue.</div>
+    </div>
+    <div style="background: white; border: 1px solid #ddd; border-radius: 12px; padding: 20px;">
+      <div style="font-weight: 700; margin-bottom: 10px; font-size: 15px;">Planned Changes</div>
+      <div style="font-size: 13px; line-height: 1.8;">
+        <span style="display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; margin-bottom: 4px;">DONE</span> Merge Coordinator + Reply Composer into single agent<br>
+        <span class="change-badge" style="font-size:10px;">2</span> Fix duplicated <code>issueDescription</code> in Urgency Assessor<br>
+        <span class="change-badge" style="font-size:10px;">3</span> Remove test reservation allowlist for production<br>
+      </div>
+    </div>
+    <div style="background: white; border: 1px solid #ddd; border-radius: 12px; padding: 20px;">
+      <div style="font-weight: 700; margin-bottom: 10px; font-size: 15px;">Resilience</div>
+      <div style="font-size: 13px; line-height: 1.8;">
+        Conversation history fails &rarr; uses latest msg only<br>
+        SMS fails &rarr; logs, continues to next recipient<br>
+        Turno fails &rarr; request still approved<br>
+        No Turno mapping &rarr; skips Turno, still approves<br>
+        No allowed extras &rarr; all requests auto-declined<br>
+        Cooldown auto-expires via <code>expires_at</code> check
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

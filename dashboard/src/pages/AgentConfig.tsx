@@ -100,18 +100,34 @@ function UrgencyTab() {
   );
 }
 
+interface DeclinedExtra {
+  id: string;
+  item_requested: string;
+  created_at: string;
+  properties?: { name: string };
+}
+
 function AllowedExtrasTab() {
   const [text, setText] = useState("");
   const [saved, setSaved] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [declined, setDeclined] = useState<DeclinedExtra[]>([]);
 
-  useEffect(() => {
+  const loadAllowed = () => {
     supabase.from("allowed_extras").select("item_name").eq("is_active", true).order("item_name")
       .then(({ data }) => {
         const bullets = (data ?? []).map((e) => `• ${e.item_name}`).join("\n");
         setText(bullets);
       });
-  }, []);
+  };
+
+  const loadDeclined = () => {
+    supabase.from("extra_requests").select("id, item_requested, created_at, properties(name)")
+      .eq("status", "declined").order("created_at", { ascending: false })
+      .then(({ data }) => setDeclined((data as DeclinedExtra[]) ?? []));
+  };
+
+  useEffect(() => { loadAllowed(); loadDeclined(); }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter") {
@@ -152,9 +168,53 @@ function AllowedExtrasTab() {
     setSaved(true);
   };
 
+  const approveDeclined = async (d: DeclinedExtra) => {
+    // Add to allowed list
+    const newText = text ? text + "\n• " + d.item_requested : "• " + d.item_requested;
+    setText(newText);
+    setSaved(false);
+    // Remove from declined log
+    await supabase.from("extra_requests").delete().eq("id", d.id);
+    loadDeclined();
+  };
+
+  const dismissDeclined = async (id: string) => {
+    await supabase.from("extra_requests").delete().eq("id", id);
+    loadDeclined();
+  };
+
   return (
     <div>
       <p className="text-base text-gray-400 mb-5">List what extras guests can request. One item per bullet point.</p>
+
+      {/* Declined requests — top of mind */}
+      {declined.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-base font-semibold text-gray-900 mb-3">Guest Requested but Not Allowed ({declined.length})</h3>
+          <div className="space-y-2">
+            {declined.map((d) => (
+              <div key={d.id} className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5 flex items-center justify-between">
+                <div>
+                  <div className="text-base text-gray-800">"{d.item_requested}"</div>
+                  <div className="text-sm text-gray-400">
+                    {(d.properties as any)?.name} &mdash; {new Date(d.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => approveDeclined(d)}
+                    className="px-3 py-1.5 text-sm font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100">
+                    Allow
+                  </button>
+                  <button onClick={() => dismissDeclined(d.id)}
+                    className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600">
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <textarea value={text} onChange={handleChange} onKeyDown={handleKeyDown} onFocus={handleFocus} rows={12}
         className="w-full px-5 py-4 text-base border border-gray-200 rounded-xl bg-white resize-y leading-relaxed font-normal focus:outline-none focus:ring-2 focus:ring-gray-300"

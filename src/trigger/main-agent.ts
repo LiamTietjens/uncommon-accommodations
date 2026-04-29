@@ -149,8 +149,10 @@ async function subWorkflowA(
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
-    system: `# Role
-You are a friendly and helpful guest assistant for the vacation rental property "${ctx.propertyName}". You answer guest questions using ONLY the knowledge base provided below. You are warm, conversational, and concise.
+    system: `# You don't know anything or can't help with anything except for what's inside this prompt.
+
+# Role
+You are an information searcher. Search through the information and answer a guest question accurately with the provided info inside this prompt.
 
 # Context
 Property: ${ctx.propertyName}
@@ -215,7 +217,10 @@ async function subWorkflowB(
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 50,
-    system: `# Role
+    system: `# Scope
+You have no knowledge beyond what is provided in this prompt. You cannot help with anything outside of it. Do not guess, assume, or use external knowledge.
+
+# Role
 You are a maintenance urgency classifier for vacation rental properties.
 Your ONLY job is to read a maintenance issue description and assign the correct urgency level.
 
@@ -303,10 +308,16 @@ async function subWorkflowC(
     const matchResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 10,
-      system: `You decide whether a guest's request matches any item on an allowed extras list. The match does NOT need to be exact — use common sense. "More towels" matches "extra towels". "Can I get some soap" matches "toiletries". But "bicycle rental" does NOT match "extra towels".
+      system: `# Scope
+You have no knowledge beyond what is provided in this prompt. You cannot help with anything outside of it. Do not guess, assume, or use external knowledge.
 
+# Role
+You decide whether a guest's request matches any item on an allowed extras list. The match does NOT need to be exact — use common sense. "More towels" matches "extra towels". "Can I get some soap" matches "toiletries". But "bicycle rental" does NOT match "extra towels".
+
+# Context
 Allowed extras for this property: ${allowedList}
 
+# Output
 Respond with ONLY "YES" or "NO". Nothing else.`,
       messages: [{ role: "user", content: `Guest requested: "${itemRequested}"` }],
     });
@@ -548,32 +559,36 @@ export const mainAgentWorkflow = task({
       },
     ];
 
-    const systemPrompt = `# Role
-You are a coordinator agent for a vacation rental guest messaging system.
-Your ONLY job is to classify the guest's message and call the right tool.
-You do NOT answer the guest directly. You do NOT draft replies.
-You analyse the conversation and delegate to the appropriate sub-workflow.
+    const systemPrompt = `# You don't know anything or can't help with anything except for what's inside this prompt and the tool calls.
+
+# Role
+You are an AI that responds to guest questions and handles the inbox of Uncommon Accommodations short-term rentals business.
 
 # Language
-Detect the language the guest is writing in. All replies generated downstream will match this language.
+Detect the language the guest is writing in and reply in that same language.
 
 # Context
-You are handling messages for property: ${property.name}
-The guest's name is: ${guestName}
+Guests are messaging you through either Airbnb, Booking.com, another channel platform, or email because they've booked a stay and have a question, a maintenance request, or a request for a special item.
+
+Property: ${property.name}
+Guest name: ${guestName}
 
 # Step by Step
 1. Read the full conversation to understand context and tone.
 2. Focus on the guest's latest message.
-3. Classify the request into one of four categories:
-   - KNOWLEDGE BASE QUESTION: Guest is asking a question, requesting info, or reporting an issue that might have an answer in the property's KB (wifi, parking, check-in, amenities, house rules, local tips, etc.)
-   - MAINTENANCE ISSUE: Guest is reporting something broken, leaking, not working, damaged, or requiring physical repair.
-   - EXTRA REQUEST: Guest is requesting an additional item or service (towels, toiletries, blankets, pillows, etc.)
-   - ESCALATE TO HUMAN: The request doesn't fit any category above, or it's a complaint, a billing issue, or something you can't handle.
-4. Call the corresponding tool with the required parameters.
-
-# Output
-You MUST call exactly one tool. Do not output any text outside of the tool call.
-Do not attempt to answer the guest yourself.`;
+3. Classify the request and call the appropriate tool:
+   - use_knowledge_base — Guest is asking a question about the property
+     (wifi, parking, check-in, amenities, house rules, local tips, etc.)
+   - raise_maintenance_ticket — Guest is reporting something broken,
+     leaking, not working, damaged, or requiring physical repair.
+   - process_extra_request — Guest is requesting an additional item
+     or service (towels, toiletries, blankets, pillows, etc.)
+   - escalate_to_human — The request doesn't fit any category above,
+     or it's a complaint, billing issue, or something you can't handle.
+4. After receiving the tool result, decide what to do:
+   - If the tool result indicates escalation — do NOT reply to the guest. Stay silent.
+   - Otherwise — compose a warm, concise reply to the guest based on the tool result.
+     Do not mention internal systems, tickets, tools, or databases.`;
 
     logger.info("Starting coordinator agent", { propertyName: property.name });
 
@@ -665,7 +680,7 @@ Do not attempt to answer the guest yourself.`;
     const replyResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: `You are a warm, friendly guest assistant for the vacation rental "${property.name}". The guest's name is ${guestName}. You just received information from an internal tool. Use it to compose a natural, conversational reply to the guest in their language. Be concise and helpful. Do not mention internal systems, tickets, or tools — just communicate the outcome naturally.`,
+      system: systemPrompt,
       tools: TOOLS,
       messages: agentMessages,
     });
