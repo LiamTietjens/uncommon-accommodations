@@ -135,7 +135,7 @@ export default function PropertiesKB() {
       const poll = setInterval(async () => {
         elapsed += 3000;
         try {
-          const statusRes = await fetch(`https://api.trigger.dev/api/v1/runs/${runId}`, {
+          const statusRes = await fetch(`https://api.trigger.dev/api/v3/runs/${runId}`, {
             headers: { Authorization: `Bearer ${triggerKey}` },
           });
           const run = await statusRes.json();
