@@ -1,15 +1,16 @@
-const BASE_URL = "https://api.turnoverbnb.com/v2";
+const BASE_URL = "https://api.turno.com/v2";
 
 function getHeaders(): Record<string, string> {
   const token = process.env.TURNO_API_KEY;
-  const partnerId = process.env.TURNO_PARTNER_ID;
-  if (!token || !partnerId) throw new Error("Missing TURNO_API_KEY or TURNO_PARTNER_ID");
-  return {
+  if (!token) throw new Error("Missing TURNO_API_KEY");
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
     "Content-Type": "application/json",
-    "TBNB-Partner-ID": partnerId,
   };
+  const partnerId = process.env.TURNO_PARTNER_ID;
+  if (partnerId) headers["TBNB-Partner-ID"] = partnerId;
+  return headers;
 }
 
 export async function listProperties(page = 1, limit = 50) {

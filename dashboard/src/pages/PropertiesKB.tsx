@@ -104,7 +104,7 @@ export default function PropertiesKB() {
 
   const loadRightPanel = () => {
     if (!selectedId) { setEntries([]); setGaps([]); setCooldowns([]); return; }
-    supabase.from("knowledge_bases").select("*").eq("property_id", selectedId).order("title")
+    supabase.from("knowledge_bases").select("*").eq("property_id", selectedId).order("created_at", { ascending: false })
       .then(({ data }) => setEntries((data as KBEntry[]) ?? []));
     supabase.from("kb_gap_log").select("*").eq("property_id", selectedId).order("created_at", { ascending: false })
       .then(({ data }) => setGaps((data as GapEntry[]) ?? []));

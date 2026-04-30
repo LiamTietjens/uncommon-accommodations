@@ -691,7 +691,7 @@ Guest name: ${guestName}
     }
 
     // Append AI disclaimer footer
-    const footer = "\n\n—\nThis message was automatically sent by an AI assistant. In case of emergency, please call 610-574-1334.";
+    const footer = "\n\n—\nThis message was automatically sent by my AI agent. In case of emergency, please call 610-574-1334.";
     const finalReply = replyText + footer;
 
     // Send the reply via Hospitable
