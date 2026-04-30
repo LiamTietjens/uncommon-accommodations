@@ -61,6 +61,7 @@ export default function PropertiesKB() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const [entries, setEntries] = useState<KBEntry[]>([]);
   const [gaps, setGaps] = useState<GapEntry[]>([]);
@@ -119,17 +120,37 @@ export default function PropertiesKB() {
 
   const syncProperties = async () => {
     setSyncing(true);
+    setSyncMsg("Syncing properties, this can take a minute...");
+    const beforeCount = properties.length;
     try {
       const triggerKey = import.meta.env.VITE_TRIGGER_SECRET_KEY;
-      if (!triggerKey) { alert("VITE_TRIGGER_SECRET_KEY not set."); return; }
+      if (!triggerKey) { setSyncing(false); setSyncMsg(null); alert("VITE_TRIGGER_SECRET_KEY not set."); return; }
       await fetch("https://api.trigger.dev/api/v1/tasks/property-sync-workflow/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${triggerKey}` },
         body: JSON.stringify({ payload: {} }),
       });
-      alert("Property sync triggered. Refresh in a minute.");
-    } catch { alert("Sync failed."); }
-    finally { setSyncing(false); }
+      // Poll Supabase until properties change or timeout (90s)
+      let elapsed = 0;
+      const poll = setInterval(async () => {
+        elapsed += 5000;
+        const { data } = await supabase.from("properties").select("*").order("name");
+        const fresh = data ?? [];
+        if (fresh.length !== beforeCount || elapsed >= 90000) {
+          clearInterval(poll);
+          setProperties(fresh);
+          loadAllCooldowns();
+          loadHealthCounts();
+          setSyncing(false);
+          setSyncMsg(fresh.length !== beforeCount ? `Sync complete — ${fresh.length} properties` : "Sync complete");
+          setTimeout(() => setSyncMsg(null), 4000);
+        }
+      }, 5000);
+    } catch {
+      setSyncing(false);
+      setSyncMsg("Sync failed.");
+      setTimeout(() => setSyncMsg(null), 4000);
+    }
   };
 
   const hasCooldown = (propId: string) => allCooldowns.some((c) => c.property_id === propId);
@@ -202,6 +223,11 @@ export default function PropertiesKB() {
             </button>
           )}
         </div>
+        {syncMsg && (
+          <div className="px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
+            {syncMsg}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           {properties.map((p) => {
             const paused = hasCooldown(p.id);
