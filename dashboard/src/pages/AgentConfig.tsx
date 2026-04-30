@@ -124,7 +124,7 @@ function AllowedExtrasTab() {
   const loadDeclined = () => {
     supabase.from("extra_requests").select("id, item_requested, created_at, properties(name)")
       .eq("status", "declined").order("created_at", { ascending: false })
-      .then(({ data }) => setDeclined((data as DeclinedExtra[]) ?? []));
+      .then(({ data }) => setDeclined((data as unknown as DeclinedExtra[]) ?? []));
   };
 
   useEffect(() => { loadAllowed(); loadDeclined(); }, []);
