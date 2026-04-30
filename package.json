@@ -16,7 +16,9 @@
   },
   "devDependencies": {
     "@trigger.dev/build": "^4.4.4",
+    "dotenv": "^17.4.2",
     "trigger.dev": "^4.4.4",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }
 }
