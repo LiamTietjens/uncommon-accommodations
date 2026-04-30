@@ -45,7 +45,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "use_knowledge_base",
     description:
-      "Search the property's knowledge base to answer a guest question about the property (wifi, parking, check-in, amenities, house rules, local tips, etc.)",
+      "Search the property's knowledge base to answer a guest question about the property OR troubleshoot a reported issue. Always try this first — including for things reported as broken or not working, since the KB may have operating instructions that resolve the problem.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -60,7 +60,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "raise_maintenance_ticket",
     description:
-      "Report a maintenance issue — something broken, leaking, not working, damaged, or requiring physical repair",
+      "Report a maintenance issue — something broken, leaking, not working, damaged, or requiring physical repair. Use this when the knowledge base had no troubleshooting steps, or when the guest has already tried troubleshooting and the problem persists.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -577,10 +577,15 @@ Guest name: ${guestName}
 1. Read the full conversation to understand context and tone.
 2. Focus on the guest's latest message.
 3. Classify the request and call the appropriate tool:
-   - use_knowledge_base — Guest is asking a question about the property
-     (wifi, parking, check-in, amenities, house rules, local tips, etc.)
+   - use_knowledge_base — ALWAYS call this first for any question or issue,
+     including when a guest reports something not working (e.g. fireplace,
+     thermostat, appliance, TV). The KB often has operating instructions
+     or troubleshooting steps that solve the problem without maintenance.
    - raise_maintenance_ticket — Guest is reporting something broken,
-     leaking, not working, damaged, or requiring physical repair.
+     leaking, not working, damaged, or requiring physical repair AND
+     either the knowledge base had no relevant troubleshooting info,
+     or the conversation shows the guest already tried the suggested
+     troubleshooting steps and the problem persists.
    - process_extra_request — Guest is requesting an additional item
      or service (towels, toiletries, blankets, pillows, etc.)
    - escalate_to_human — The request doesn't fit any category above,
@@ -592,110 +597,104 @@ Guest name: ${guestName}
 
     logger.info("Starting coordinator agent", { propertyName: property.name });
 
-    const coordinatorResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1024,
-      system: systemPrompt,
-      tools: TOOLS,
-      messages: agentMessages,
-    });
+    // ── Agent Loop: coordinator can call multiple tools in sequence ──
+    const MAX_ITERATIONS = 5;
+    let lastToolUsed = "";
+    let replyText = "";
 
-    // Step 7: Extract and execute tool call
-    const toolUseBlock = coordinatorResponse.content.find(
-      (b) => b.type === "tool_use"
-    ) as Anthropic.ContentBlockParam & { type: "tool_use"; name: string; input: any; id: string } | undefined;
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        system: systemPrompt,
+        tools: TOOLS,
+        messages: agentMessages,
+      });
 
-    if (!toolUseBlock) {
-      logger.error("Coordinator did not call any tool — escalating");
-      await subWorkflowD("Coordinator failed to select a tool", messageBody, agentCtx);
-      return { status: "escalated", reason: "no_tool_call" };
-    }
+      // Check if the AI produced a text reply (loop ends)
+      const textBlock = response.content.find((b) => b.type === "text");
+      const toolUseBlock = response.content.find(
+        (b) => b.type === "tool_use"
+      ) as Anthropic.ContentBlockParam & { type: "tool_use"; name: string; input: any; id: string } | undefined;
 
-    const toolName = toolUseBlock.name;
-    const toolInput = toolUseBlock.input as Record<string, string>;
-    logger.info("Coordinator selected tool", { tool: toolName, input: toolInput });
+      // If no tool call, extract text reply and exit loop
+      if (!toolUseBlock) {
+        replyText = textBlock && "text" in textBlock ? textBlock.text : "";
+        break;
+      }
 
-    // Handle escalation (HARD STOP — Sub-Workflow D)
-    if (toolName === "escalate_to_human") {
-      await subWorkflowD(toolInput.reason, messageBody, agentCtx);
-      return { status: "escalated", reason: toolInput.reason };
-    }
+      const toolName = toolUseBlock.name;
+      const toolInput = toolUseBlock.input as Record<string, string>;
+      lastToolUsed = toolName;
+      logger.info(`Agent loop iteration ${i + 1}: tool=${toolName}`, { input: toolInput });
 
-    // Execute the appropriate sub-workflow
-    let toolResult: string;
+      // Handle escalation (HARD STOP — Sub-Workflow D)
+      if (toolName === "escalate_to_human") {
+        await subWorkflowD(toolInput.reason, messageBody, agentCtx);
+        return { status: "escalated", reason: toolInput.reason };
+      }
 
-    switch (toolName) {
-      case "use_knowledge_base": {
-        const answer = await subWorkflowA(toolInput.query, agentCtx);
-        if (answer === null) {
-          // KB had no answer → Sub-Workflow D (HARD STOP)
-          await subWorkflowD(
-            `KB had no answer for: ${toolInput.query}`,
-            messageBody,
+      // Execute the appropriate sub-workflow
+      let toolResult: string;
+
+      switch (toolName) {
+        case "use_knowledge_base": {
+          const answer = await subWorkflowA(toolInput.query, agentCtx);
+          // Return result to coordinator — let it decide next step
+          toolResult = answer ?? "No relevant information found in the knowledge base for this query.";
+          break;
+        }
+
+        case "raise_maintenance_ticket": {
+          toolResult = await subWorkflowB(
+            toolInput.issue_description,
+            toolInput.guest_context,
             agentCtx
           );
-          return { status: "escalated", reason: "kb_no_answer" };
+          break;
         }
-        toolResult = answer;
-        break;
+
+        case "process_extra_request": {
+          toolResult = await subWorkflowC(toolInput.item_requested, agentCtx);
+          break;
+        }
+
+        default:
+          logger.error("Unknown tool called", { tool: toolName });
+          await subWorkflowD(`Unknown tool: ${toolName}`, messageBody, agentCtx);
+          return { status: "escalated", reason: "unknown_tool" };
       }
 
-      case "raise_maintenance_ticket": {
-        toolResult = await subWorkflowB(
-          toolInput.issue_description,
-          toolInput.guest_context,
-          agentCtx
-        );
-        break;
-      }
+      // Feed tool result back to coordinator for next iteration
+      agentMessages.push({
+        role: "assistant",
+        content: response.content as Anthropic.ContentBlockParam[],
+      });
 
-      case "process_extra_request": {
-        toolResult = await subWorkflowC(toolInput.item_requested, agentCtx);
-        break;
-      }
-
-      default:
-        logger.error("Unknown tool called", { tool: toolName });
-        await subWorkflowD(`Unknown tool: ${toolName}`, messageBody, agentCtx);
-        return { status: "escalated", reason: "unknown_tool" };
+      agentMessages.push({
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: toolUseBlock.id,
+            content: toolResult,
+          },
+        ],
+      });
     }
-
-    // Step 8: Agent composes final reply
-    agentMessages.push({
-      role: "assistant",
-      content: coordinatorResponse.content as Anthropic.ContentBlockParam[],
-    });
-
-    agentMessages.push({
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: toolUseBlock.id,
-          content: toolResult,
-        },
-      ],
-    });
-
-    const replyResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1024,
-      system: systemPrompt,
-      tools: TOOLS,
-      messages: agentMessages,
-    });
-
-    const replyBlock = replyResponse.content.find((b) => b.type === "text");
-    const replyText = replyBlock && "text" in replyBlock ? replyBlock.text : "";
 
     if (!replyText) {
       logger.error("Agent produced no reply text");
       return { status: "error", reason: "no_reply_generated" };
     }
 
+    // Append AI disclaimer footer
+    const footer = "\n\n—\nThis message was automatically sent by an AI assistant. In case of emergency, please call 610-574-1334.";
+    const finalReply = replyText + footer;
+
     // Send the reply via Hospitable
     try {
-      await sendMessage(reservationUuid, replyText);
+      await sendMessage(reservationUuid, finalReply);
       logger.info("Reply sent to guest", { reservationUuid, replyLength: replyText.length });
     } catch (e) {
       logger.error("Failed to send reply via Hospitable", { error: String(e) });
@@ -704,7 +703,7 @@ Guest name: ${guestName}
 
     return {
       status: "replied",
-      tool: toolName,
+      tool: lastToolUsed,
       replyLength: replyText.length,
     };
   },
