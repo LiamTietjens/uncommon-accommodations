@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 
 interface Recipient {
   id: string; name: string; phone: string;
@@ -22,12 +22,34 @@ export default function SmsRecipients() {
     receives_maintenance_low: true, receives_maintenance_medium: true, receives_maintenance_high: true,
     receives_kb_gaps: true,
   });
+  const [editing, setEditing] = useState<{ id: string; name: string; phone: string } | null>(null);
+
+  const normalizePhone = (raw: string) => raw.replace(/[\s\-().+]/g, "");
+  const hasLeadingZeroAfterCC = (digits: string) => {
+    if (/^[17]/.test(digits) && digits[1] === "0") return true;
+    if (/^[2-689]/.test(digits) && digits[2] === "0") return true;
+    return false;
+  };
+  const isPhoneValid = (raw: string) => {
+    const digits = normalizePhone(raw);
+    return /^\d{10,15}$/.test(digits) && !hasLeadingZeroAfterCC(digits);
+  };
+  const phoneDigits = normalizePhone(form.phone);
+  const phoneValid = form.phone === "" || isPhoneValid(form.phone);
+  const phoneLooksLikeLeadingZero = form.phone !== "" && /^\d{10,15}$/.test(phoneDigits) && hasLeadingZeroAfterCC(phoneDigits);
+  const canSave = form.name.trim() !== "" && isPhoneValid(form.phone);
+
+  const editPhoneDigits = editing ? normalizePhone(editing.phone) : "";
+  const editPhoneValid = editing ? (editing.phone === "" || isPhoneValid(editing.phone)) : true;
+  const editPhoneLooksLikeLeadingZero = editing ? (editing.phone !== "" && /^\d{10,15}$/.test(editPhoneDigits) && hasLeadingZeroAfterCC(editPhoneDigits)) : false;
+  const canSaveEdit = editing ? (editing.name.trim() !== "" && isPhoneValid(editing.phone)) : false;
 
   const load = () => { supabase.from("sms_recipients").select("*").order("name").then(({ data }) => setRecipients(data ?? [])); };
   useEffect(load, []);
 
   const add = async () => {
-    await supabase.from("sms_recipients").insert({ ...form, is_active: true });
+    if (!canSave) return;
+    await supabase.from("sms_recipients").insert({ ...form, phone: phoneDigits, is_active: true });
     setForm({ name: "", phone: "", receives_maintenance_low: true, receives_maintenance_medium: true, receives_maintenance_high: true, receives_kb_gaps: true });
     setAdding(false);
     load();
@@ -41,6 +63,13 @@ export default function SmsRecipients() {
   const remove = async (id: string) => {
     if (!confirm("Remove this recipient?")) return;
     await supabase.from("sms_recipients").delete().eq("id", id);
+    load();
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !canSaveEdit) return;
+    await supabase.from("sms_recipients").update({ name: editing.name, phone: normalizePhone(editing.phone) }).eq("id", editing.id);
+    setEditing(null);
     load();
   };
 
@@ -64,7 +93,10 @@ export default function SmsRecipients() {
             <label className="block">
               <span className="text-sm text-gray-400 font-medium uppercase">Phone (with country code)</span>
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="mt-1.5 w-full px-4 py-2 text-base border border-gray-200 rounded-lg" placeholder="44791234567" />
+                className={`mt-1.5 w-full px-4 py-2 text-base border rounded-lg ${!phoneValid ? "border-red-400 bg-red-50" : "border-gray-200"}`} placeholder="+49 157 55577318" />
+              {!phoneValid && !phoneLooksLikeLeadingZero && <p className="text-red-500 text-sm mt-1">Enter 10-15 digits: country code + number, no spaces or symbols</p>}
+              {phoneLooksLikeLeadingZero && <p className="text-red-500 text-sm mt-1">Remove the leading 0 after the country code (e.g. +49 0157… → +49 157…)</p>}
+              {form.phone && phoneValid && <p className="text-green-600 text-sm mt-1">Will be saved as: {phoneDigits}</p>}
             </label>
           </div>
           <div className="mb-4">
@@ -84,7 +116,7 @@ export default function SmsRecipients() {
               KB gap escalations
             </label>
           </div>
-          <button onClick={add} className="px-5 py-2 text-base font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800">Save</button>
+          <button onClick={add} disabled={!canSave} className={`px-5 py-2 text-base font-medium rounded-lg ${canSave ? "bg-gray-900 text-white hover:bg-gray-800" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}>Save</button>
         </div>
       )}
 
@@ -112,8 +144,26 @@ export default function SmsRecipients() {
           <tbody>
             {recipients.map((r) => (
               <tr key={r.id} className="border-b border-gray-50">
-                <td className="px-5 py-4 text-gray-900">{r.name}</td>
-                <td className="px-5 py-4 text-gray-500 font-mono text-sm">{r.phone}</td>
+                {editing?.id === r.id ? (
+                  <>
+                    <td className="px-5 py-4">
+                      <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                        className="w-full px-3 py-1.5 text-base border border-gray-200 rounded-lg" />
+                    </td>
+                    <td className="px-5 py-4">
+                      <input value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })}
+                        className={`w-full px-3 py-1.5 text-base font-mono border rounded-lg ${!editPhoneValid ? "border-red-400 bg-red-50" : "border-gray-200"}`}
+                        placeholder="+49 157 55577318" />
+                      {!editPhoneValid && !editPhoneLooksLikeLeadingZero && <p className="text-red-500 text-xs mt-1">10-15 digits: country code + number</p>}
+                      {editPhoneLooksLikeLeadingZero && <p className="text-red-500 text-xs mt-1">Remove leading 0 after country code</p>}
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-5 py-4 text-gray-900">{r.name}</td>
+                    <td className="px-5 py-4 text-gray-500 font-mono text-sm">{r.phone}</td>
+                  </>
+                )}
                 {maintenanceFields.map((f) => (
                   <td key={f.key} className="px-3 py-4 text-center">
                     <button onClick={() => toggle(r.id, f.key, r[f.key])}
@@ -125,7 +175,19 @@ export default function SmsRecipients() {
                     className={`w-6 h-6 rounded ${r.receives_kb_gaps ? "bg-blue-500" : "bg-gray-200"}`} />
                 </td>
                 <td className="px-5 py-4 text-right">
-                  <button onClick={() => remove(r.id)} className="p-2 text-gray-300 hover:text-red-500"><Trash2 size={20} /></button>
+                  <div className="flex gap-1 justify-end">
+                    {editing?.id === r.id ? (
+                      <>
+                        <button onClick={saveEdit} disabled={!canSaveEdit} className={`p-2 ${canSaveEdit ? "text-green-500 hover:text-green-700" : "text-gray-300 cursor-not-allowed"}`}><Check size={20} /></button>
+                        <button onClick={() => setEditing(null)} className="p-2 text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => setEditing({ id: r.id, name: r.name, phone: r.phone })} className="p-2 text-gray-300 hover:text-gray-500"><Pencil size={20} /></button>
+                        <button onClick={() => remove(r.id)} className="p-2 text-gray-300 hover:text-red-500"><Trash2 size={20} /></button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
