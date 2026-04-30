@@ -117,7 +117,7 @@ export default function Tickets() {
             <label className="block">
               <span className="text-sm text-gray-400 font-medium uppercase">Urgency</span>
               <select value={form.urgency} onChange={(e) => setForm({ ...form, urgency: e.target.value })}
-                className="mt-2.5 px-4 py-2 text-base border border-gray-200 rounded-lg">
+                className="mt-4 px-4 py-2 text-base border border-gray-200 rounded-lg">
                 <option value="high">High</option>
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
@@ -126,7 +126,7 @@ export default function Tickets() {
             <label className="block">
               <span className="text-sm text-gray-400 font-medium uppercase">Status</span>
               <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className="mt-2.5 px-4 py-2 text-base border border-gray-200 rounded-lg">
+                className="mt-4 px-4 py-2 text-base border border-gray-200 rounded-lg">
                 {statuses.map((s) => <option key={s} value={s}>{statusLabel[s]}</option>)}
               </select>
             </label>
