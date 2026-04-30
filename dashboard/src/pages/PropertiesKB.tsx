@@ -121,31 +121,38 @@ export default function PropertiesKB() {
   const syncProperties = async () => {
     setSyncing(true);
     setSyncMsg("Syncing properties, this can take a minute...");
-    const beforeCount = properties.length;
     try {
       const triggerKey = import.meta.env.VITE_TRIGGER_SECRET_KEY;
       if (!triggerKey) { setSyncing(false); setSyncMsg(null); alert("VITE_TRIGGER_SECRET_KEY not set."); return; }
-      await fetch("https://api.trigger.dev/api/v1/tasks/property-sync-workflow/trigger", {
+      const triggerRes = await fetch("https://api.trigger.dev/api/v1/tasks/property-sync-workflow/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${triggerKey}` },
         body: JSON.stringify({ payload: {} }),
       });
-      // Poll Supabase until properties change or timeout (90s)
+      const { id: runId } = await triggerRes.json();
+      // Poll the Trigger.dev run status until completed or timeout (120s)
       let elapsed = 0;
       const poll = setInterval(async () => {
-        elapsed += 5000;
-        const { data } = await supabase.from("properties").select("*").order("name");
-        const fresh = data ?? [];
-        if (fresh.length !== beforeCount || elapsed >= 90000) {
-          clearInterval(poll);
-          setProperties(fresh);
-          loadAllCooldowns();
-          loadHealthCounts();
-          setSyncing(false);
-          setSyncMsg(fresh.length !== beforeCount ? `Sync complete — ${fresh.length} properties` : "Sync complete");
-          setTimeout(() => setSyncMsg(null), 4000);
+        elapsed += 3000;
+        try {
+          const statusRes = await fetch(`https://api.trigger.dev/api/v1/runs/${runId}`, {
+            headers: { Authorization: `Bearer ${triggerKey}` },
+          });
+          const run = await statusRes.json();
+          const done = run.status === "COMPLETED" || run.status === "FAILED" || run.status === "CANCELED";
+          if (done || elapsed >= 120000) {
+            clearInterval(poll);
+            loadProperties();
+            loadAllCooldowns();
+            loadHealthCounts();
+            setSyncing(false);
+            setSyncMsg(run.status === "COMPLETED" ? "Sync complete" : run.status === "FAILED" ? "Sync failed" : "Sync complete");
+            setTimeout(() => setSyncMsg(null), 4000);
+          }
+        } catch {
+          // Ignore polling errors, keep waiting
         }
-      }, 5000);
+      }, 3000);
     } catch {
       setSyncing(false);
       setSyncMsg("Sync failed.");
