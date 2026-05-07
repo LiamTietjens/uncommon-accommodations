@@ -80,7 +80,7 @@ export async function createProject(params: {
     headers: getHeaders(),
     body: JSON.stringify({
       property_id: params.propertyId,
-      cleaner_description: params.summary + " — " + params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
+      cleaner_description: params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
       begin_time: beginTime,
       end_time: endTime,
       project_type_id: 1,

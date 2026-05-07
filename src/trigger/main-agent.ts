@@ -363,7 +363,7 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
       const turnoResult = await createProject({
         propertyId: parseInt(ctx.turnoPropertyId, 10),
         summary: `Guest extra request: ${itemRequested}`,
-        cleanerDescription: `Guest at ${ctx.propertyName} has requested: ${itemRequested}. Please deliver this to the property during the task window.`,
+        cleanerDescription: `${itemRequested}. Please deliver within the task window.`,
         timezone: ctx.timezone,
       });
       turnoProjectId = String(turnoResult?.data?.id || null);
