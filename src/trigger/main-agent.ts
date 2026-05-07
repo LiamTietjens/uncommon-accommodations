@@ -2,7 +2,7 @@ import { task, logger } from "@trigger.dev/sdk";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSupabaseClient } from "../lib/supabase.js";
 import { getReservation, getReservationMessages, sendMessage } from "../lib/hospitable.js";
-import { createProject } from "../lib/turno.js";
+import { createProject, getLocalHour } from "../lib/turno.js";
 import { sendSms } from "../lib/sms.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -354,6 +354,10 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
   // C2b: Allowed — create Turno task
   let turnoProjectId: string | null = null;
 
+  // Determine delivery estimate based on local time
+  const local = getLocalHour(ctx.timezone);
+  const deliveryEstimate = local.hour < 15 ? "today by the end of the day" : "tomorrow by 3pm";
+
   if (ctx.turnoPropertyId) {
     try {
       const turnoResult = await createProject({
@@ -396,7 +400,7 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
     turno_project_id: turnoProjectId,
   });
 
-  return `Approved. ${turnoProjectId ? `Turno task created (ID: ${turnoProjectId}) for "${itemRequested}".` : `"${itemRequested}" approved but no Turno mapping. SMS alert sent.`}`;
+  return `Approved. "${itemRequested}" has been arranged. Our team will deliver it ${deliveryEstimate}. Tell the guest this delivery timeframe.`;
 }
 
 // ─── Sub-Workflow D: Human Escalation (HARD STOP) ────────────────────
