@@ -86,10 +86,8 @@ export async function createProject(params: {
     body: JSON.stringify({
       property_id: params.propertyId,
       cleaner_description: params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
-      begin_date: beginDate,
-      begin_time: beginTimeOnly,
-      end_date: endDate,
-      end_time: endTimeOnly,
+      begin_time: `${beginDate} ${beginTimeOnly}`,
+      end_time: `${endDate} ${endTimeOnly}`,
       project_type_id: 1,
       use_default_checklist: false,
       price: 0,
