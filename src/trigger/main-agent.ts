@@ -130,8 +130,16 @@ async function subWorkflowA(
     return null; // Will trigger escalation
   }
 
+  // Load allowed extras and inject as a synthetic KB entry
+  const { data: allowedExtras } = await supabase
+    .from("allowed_extras")
+    .select("item_name")
+    .eq("is_active", true);
+
+  const extrasList = (allowedExtras || []).map((e) => e.item_name);
+
   // Format KB for the prompt
-  const kbText = kbEntries
+  let kbText = kbEntries
     .map((e) => {
       let entry = `### ${e.title} [${e.category}]\n${e.content}`;
       if (e.video_url) entry += `\nVideo: ${e.video_url}`;
@@ -139,6 +147,10 @@ async function subWorkflowA(
       return entry;
     })
     .join("\n\n");
+
+  if (extrasList.length > 0) {
+    kbText += `\n\n### What extra amenities or items can I request? [extras]\nYou can request the following extra items during your stay: ${extrasList.join(", ")}. Just let us know and we'll arrange it for you!`;
+  }
 
   // Format conversation history
   const historyText = ctx.conversationHistory
