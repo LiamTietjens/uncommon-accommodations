@@ -82,12 +82,13 @@ export async function createProject(params: {
     headers: getHeaders(),
     body: JSON.stringify({
       property_id: params.propertyId,
-      summary: params.summary + " — IGNORE THIS IS A TEST",
+      name: params.summary + " — IGNORE THIS IS A TEST",
       cleaner_description: params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
       begin_time: formatDate(now),
       end_time: formatDate(endTime),
       project_type_id: 1,
       use_default_checklist: false,
+      price: 0,
       publish: true,
     }),
   });
