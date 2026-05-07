@@ -62,17 +62,22 @@ export async function createProject(params: {
   const pad = (n: number) => String(n).padStart(2, "0");
 
   // begin = now in local timezone
-  const beginTime = formatLocalTime(new Date(), params.timezone);
+  const beginFull = formatLocalTime(new Date(), params.timezone);
+  const beginDate = beginFull.split(" ")[0]; // YYYY-MM-DD
+  const beginTimeOnly = beginFull.split(" ")[1]; // HH:MM:SS
 
   // end depends on whether it's before or after 3pm local
-  let endTime: string;
+  let endDate: string;
+  let endTimeOnly: string;
   if (local.hour < 15) {
     // Before 3pm → end at 11:59 PM today (local)
-    endTime = `${local.year}-${pad(local.month)}-${pad(local.day)} 23:59:00`;
+    endDate = `${local.year}-${pad(local.month)}-${pad(local.day)}`;
+    endTimeOnly = "23:59:00";
   } else {
     // 3pm or later → end at 2:59 PM next day (local)
     const tomorrow = new Date(local.year, local.month - 1, local.day + 1);
-    endTime = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())} 14:59:00`;
+    endDate = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+    endTimeOnly = "14:59:00";
   }
 
   const res = await fetch(`${BASE_URL}/projects`, {
@@ -81,8 +86,10 @@ export async function createProject(params: {
     body: JSON.stringify({
       property_id: params.propertyId,
       cleaner_description: params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
-      begin_time: beginTime,
-      end_time: endTime,
+      begin_date: beginDate,
+      begin_time: `${beginDate} ${beginTimeOnly}`,
+      end_date: endDate,
+      end_time: `${endDate} ${endTimeOnly}`,
       project_type_id: 1,
       use_default_checklist: false,
       price: 0,
