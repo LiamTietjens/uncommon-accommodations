@@ -83,6 +83,9 @@ export async function createProject(params: {
     body: JSON.stringify({
       property_id: params.propertyId,
       name: params.summary + " — IGNORE THIS IS A TEST",
+      summary: params.summary + " — IGNORE THIS IS A TEST",
+      title: params.summary + " — IGNORE THIS IS A TEST",
+      description: params.summary + " — IGNORE THIS IS A TEST",
       cleaner_description: params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
       begin_time: formatDate(now),
       end_time: formatDate(endTime),
