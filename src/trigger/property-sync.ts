@@ -1,6 +1,7 @@
 import { task, logger } from "@trigger.dev/sdk";
 import { getSupabaseClient } from "../lib/supabase.js";
 import { listProperties as listTurnoProperties } from "../lib/turno.js";
+import { diceCoefficient } from "../lib/similarity.js";
 
 const HOSPITABLE_BASE = "https://public.api.hospitable.com/v2";
 
@@ -109,25 +110,47 @@ export const propertySyncWorkflow = task({
       logger.warn("Turno fetch failed — skipping Turno mapping", { error: String(e) });
     }
 
-    // ── Step 5: Match Turno properties to Supabase by name ───────
+    // ── Step 5: Match Turno properties to Supabase (alias priority, then fuzzy) ─
 
     if (allTurnoProperties.length > 0) {
       const { data: supabaseProperties } = await supabase
         .from("properties")
-        .select("id, name, turno_property_id")
+        .select("id, name, turno_property_id, turno_alias")
         .eq("is_active", true);
 
+      const spList = supabaseProperties || [];
+
       for (const tp of allTurnoProperties) {
-        const match = (supabaseProperties || []).find(
+        // 1. Exact match on turno_alias (manual override takes priority)
+        let match = spList.find(
           (sp) =>
-            sp.name.toLowerCase().trim() === tp.alias.toLowerCase().trim() &&
+            sp.turno_alias &&
+            sp.turno_alias.toLowerCase().trim() === tp.alias.toLowerCase().trim() &&
             !sp.turno_property_id
         );
+
+        // 2. Fuzzy match on property name using Dice coefficient
+        if (!match) {
+          let bestScore = 0;
+          let bestCandidate: (typeof spList)[number] | null = null;
+          for (const sp of spList) {
+            if (sp.turno_property_id) continue; // already mapped
+            const score = diceCoefficient(sp.name, tp.alias);
+            if (score >= 0.7 && score > bestScore) {
+              bestScore = score;
+              bestCandidate = sp;
+            }
+          }
+          if (bestCandidate) {
+            match = bestCandidate;
+            logger.info("Turno fuzzy match", { turnoAlias: tp.alias, propertyName: match.name, score: bestScore });
+          }
+        }
 
         if (match) {
           await supabase
             .from("properties")
-            .update({ turno_property_id: String(tp.id) })
+            .update({ turno_property_id: String(tp.id), turno_alias: tp.alias })
             .eq("id", match.id);
           turnoMapped++;
           logger.info("Turno property mapped", { name: tp.alias, turnoId: tp.id });

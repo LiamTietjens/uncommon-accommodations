@@ -37,6 +37,7 @@ interface AgentContext {
   latestMessage: string;
   guestName: string;
   turnoPropertyId: string | null;
+  timezone: string;
 }
 
 // ─── Tool Definitions for Claude ────────────────────────────────────
@@ -346,7 +347,8 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
       const turnoResult = await createProject({
         propertyId: parseInt(ctx.turnoPropertyId, 10),
         summary: `Guest extra request: ${itemRequested}`,
-        cleanerDescription: `Please provide the guest with: ${itemRequested}. This was requested by the guest during their stay.`,
+        cleanerDescription: `Guest at ${ctx.propertyName} has requested: ${itemRequested}. Please deliver this to the property during the task window.`,
+        timezone: ctx.timezone,
       });
       turnoProjectId = String(turnoResult?.data?.id || null);
       logger.info("Turno project created", { turnoProjectId });
@@ -354,7 +356,24 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
       logger.error("Turno project creation failed — continuing without it", { error: String(e) });
     }
   } else {
-    logger.warn("No turno_property_id mapped — skipping Turno task creation");
+    // No Turno mapping — send SMS alert
+    logger.warn("No turno_property_id mapped — sending SMS alert");
+    const { data: recipients } = await supabase
+      .from("sms_recipients")
+      .select("*")
+      .eq("receives_kb_gaps", true)
+      .eq("is_active", true);
+
+    if (recipients && recipients.length > 0) {
+      const smsBody = `[AI Agent] Extra request approved: ${itemRequested} at ${ctx.propertyName}. No Turno property mapped - manual action needed.`;
+      for (const r of recipients) {
+        try {
+          await sendSms(r.phone, smsBody);
+        } catch (e) {
+          logger.error("SMS send failed", { recipient: r.name, error: String(e) });
+        }
+      }
+    }
   }
 
   await supabase.from("extra_requests").insert({
@@ -365,7 +384,7 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
     turno_project_id: turnoProjectId,
   });
 
-  return `Approved. ${turnoProjectId ? `Turno task created (ID: ${turnoProjectId}) for "${itemRequested}".` : `"${itemRequested}" approved but Turno task could not be created (no Turno property mapping).`}`;
+  return `Approved. ${turnoProjectId ? `Turno task created (ID: ${turnoProjectId}) for "${itemRequested}".` : `"${itemRequested}" approved but no Turno mapping. SMS alert sent.`}`;
 }
 
 // ─── Sub-Workflow D: Human Escalation (HARD STOP) ────────────────────
@@ -541,6 +560,7 @@ export const mainAgentWorkflow = task({
       latestMessage: messageBody,
       guestName,
       turnoPropertyId: property.turno_property_id,
+      timezone: property.timezone || "America/New_York",
     };
 
     // ── Phase 2: Agent Loop ─────────────────────────────────────────

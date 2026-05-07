@@ -1,13 +1,14 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
-import { RefreshCw, Trash2, X, Plus, HelpCircle, Link } from "lucide-react";
+import { RefreshCw, Trash2, X, Plus, HelpCircle, Link, Pencil, Check } from "lucide-react";
 
 interface Property {
   id: string;
   name: string;
   hospitable_property_uuid: string;
   turno_property_id: string | null;
+  turno_alias: string | null;
   is_active: boolean;
 }
 
@@ -283,6 +284,11 @@ export default function PropertiesKB() {
                   <span className="font-mono">{selected.hospitable_property_uuid.slice(0, 8)}...</span>
                   {selected.turno_property_id && <span>Turno: {selected.turno_property_id}</span>}
                 </div>
+                {isSuperAdmin && (
+                  <TurnoAliasField property={selected} onSave={(alias) => {
+                    setProperties(properties.map((p) => p.id === selected.id ? { ...p, turno_alias: alias } : p));
+                  }} />
+                )}
                 {selectedHealth !== null && (
                   <div className="flex items-center gap-2 mt-2">
                     <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -398,6 +404,41 @@ export default function PropertiesKB() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function TurnoAliasField({ property, onSave }: { property: Property; onSave: (alias: string | null) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(property.turno_alias || "");
+
+  useEffect(() => { setValue(property.turno_alias || ""); }, [property.turno_alias]);
+
+  const save = async () => {
+    const alias = value.trim() || null;
+    await supabase.from("properties").update({ turno_alias: alias }).eq("id", property.id);
+    onSave(alias);
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2 mt-1.5 text-sm">
+      <span className="text-gray-400">Turno Alias:</span>
+      {editing ? (
+        <div className="flex items-center gap-1.5">
+          <input value={value} onChange={(e) => setValue(e.target.value)} autoFocus
+            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setEditing(false); setValue(property.turno_alias || ""); } }}
+            className="px-2 py-0.5 text-sm border border-gray-300 rounded w-48" placeholder="Property name in Turno" />
+          <button onClick={save} className="text-green-600 hover:text-green-800"><Check size={14} /></button>
+          <button onClick={() => { setEditing(false); setValue(property.turno_alias || ""); }} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+        </div>
+      ) : (
+        <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700">
+          {property.turno_alias || <span className="italic text-gray-300">not set</span>}
+          <Pencil size={12} />
+        </button>
+      )}
+      {!editing && <span className="text-xs text-gray-300">Set to match the property name in Turno</span>}
     </div>
   );
 }
