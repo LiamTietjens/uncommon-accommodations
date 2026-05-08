@@ -672,59 +672,68 @@ called immediately without confirmation.
 
       // Check if the AI produced a text reply (loop ends)
       const textBlock = response.content.find((b) => b.type === "text");
-      const toolUseBlock = response.content.find(
+      const toolUseBlocks = response.content.filter(
         (b) => b.type === "tool_use"
-      ) as Anthropic.ContentBlockParam & { type: "tool_use"; name: string; input: any; id: string } | undefined;
+      ) as (Anthropic.ContentBlockParam & { type: "tool_use"; name: string; input: any; id: string })[];
 
-      // If no tool call, extract text reply and exit loop
-      if (!toolUseBlock) {
+      // If no tool calls, extract text reply and exit loop
+      if (toolUseBlocks.length === 0) {
         replyText = textBlock && "text" in textBlock ? textBlock.text : "";
         break;
       }
 
-      const toolName = toolUseBlock.name;
-      const toolInput = toolUseBlock.input as Record<string, string>;
-      lastToolUsed = toolName;
-      logger.info(`Agent loop iteration ${i + 1}: tool=${toolName}`, { input: toolInput });
+      // Process all tool calls in this response
+      const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
+      for (const toolUseBlock of toolUseBlocks) {
+        const toolName = toolUseBlock.name;
+        const toolInput = toolUseBlock.input as Record<string, string>;
+        lastToolUsed = toolName;
+        logger.info(`Agent loop iteration ${i + 1}: tool=${toolName}`, { input: toolInput });
 
-      // Handle escalation (HARD STOP — Sub-Workflow D)
-      if (toolName === "escalate_to_human") {
-        await subWorkflowD(toolInput.reason, messageBody, agentCtx);
-        return { status: "escalated", reason: toolInput.reason };
+        // Handle escalation (HARD STOP — Sub-Workflow D)
+        if (toolName === "escalate_to_human") {
+          await subWorkflowD(toolInput.reason, messageBody, agentCtx);
+          return { status: "escalated", reason: toolInput.reason };
+        }
+
+        // Execute the appropriate sub-workflow
+        let toolResult: string;
+
+        switch (toolName) {
+          case "use_knowledge_base": {
+            const answer = await subWorkflowA(toolInput.query, agentCtx);
+            toolResult = answer ?? "No relevant information found in the knowledge base for this query.";
+            break;
+          }
+
+          case "raise_maintenance_ticket": {
+            toolResult = await subWorkflowB(
+              toolInput.issue_description,
+              toolInput.guest_context,
+              agentCtx
+            );
+            break;
+          }
+
+          case "process_extra_request": {
+            toolResult = await subWorkflowC(toolInput.item_requested, agentCtx);
+            break;
+          }
+
+          default:
+            logger.error("Unknown tool called", { tool: toolName });
+            toolResult = "Unknown tool — cannot process.";
+            break;
+        }
+
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolUseBlock.id,
+          content: toolResult,
+        });
       }
 
-      // Execute the appropriate sub-workflow
-      let toolResult: string;
-
-      switch (toolName) {
-        case "use_knowledge_base": {
-          const answer = await subWorkflowA(toolInput.query, agentCtx);
-          // Return result to coordinator — let it decide next step
-          toolResult = answer ?? "No relevant information found in the knowledge base for this query.";
-          break;
-        }
-
-        case "raise_maintenance_ticket": {
-          toolResult = await subWorkflowB(
-            toolInput.issue_description,
-            toolInput.guest_context,
-            agentCtx
-          );
-          break;
-        }
-
-        case "process_extra_request": {
-          toolResult = await subWorkflowC(toolInput.item_requested, agentCtx);
-          break;
-        }
-
-        default:
-          logger.error("Unknown tool called", { tool: toolName });
-          await subWorkflowD(`Unknown tool: ${toolName}`, messageBody, agentCtx);
-          return { status: "escalated", reason: "unknown_tool" };
-      }
-
-      // Feed tool result back to coordinator for next iteration
+      // Feed all tool results back to coordinator for next iteration
       agentMessages.push({
         role: "assistant",
         content: response.content as Anthropic.ContentBlockParam[],
@@ -732,13 +741,7 @@ called immediately without confirmation.
 
       agentMessages.push({
         role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: toolUseBlock.id,
-            content: toolResult,
-          },
-        ],
+        content: toolResults,
       });
     }
 
