@@ -787,7 +787,12 @@ Do not add anything else. Do not mention SMS, internal systems, or tickets.
         switch (toolName) {
           case "use_knowledge_base": {
             const answer = await subWorkflowA(toolInput.query, agentCtx);
-            toolResult = answer ?? "No relevant information found in the knowledge base for this query.";
+            if (answer === null) {
+              // KB had no answer → HARD STOP, escalate to human immediately
+              await subWorkflowD("Knowledge base had no answer", messageBody, agentCtx);
+              return { status: "escalated", reason: "kb_no_answer" };
+            }
+            toolResult = answer;
             break;
           }
 
