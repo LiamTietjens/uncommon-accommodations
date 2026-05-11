@@ -486,9 +486,12 @@ export const mainAgentWorkflow = task({
       return { status: "skipped", reason: "host_message" };
     }
 
-    // --- TESTING FILTER: only process this reservation ---
-    const ALLOWED_RESERVATION_UUID = "42ea05f3-41a4-4a8e-833d-3e7b974bb526";
-    if (reservationUuid !== ALLOWED_RESERVATION_UUID) {
+    // --- TESTING FILTER: only process allowed reservations ---
+    const ALLOWED_RESERVATION_UUIDS = [
+      "42ea05f3-41a4-4a8e-833d-3e7b974bb526",
+      "bad04914-eaa3-48f8-9c50-8b1b5722f117", // Tyler Wren — Unit 2, Oct 27-29
+    ];
+    if (!ALLOWED_RESERVATION_UUIDS.includes(reservationUuid)) {
       logger.info(`Skipping reservation ${reservationUuid} — not in test allowlist`);
       return { status: "skipped", reason: "reservation not in test allowlist" };
     }
