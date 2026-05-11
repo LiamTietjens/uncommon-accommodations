@@ -5,7 +5,7 @@ import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 interface Recipient {
   id: string; name: string; phone: string;
   receives_maintenance_low: boolean; receives_maintenance_medium: boolean; receives_maintenance_high: boolean;
-  receives_kb_gaps: boolean; is_active: boolean;
+  receives_kb_gaps: boolean; receives_checkin_checkout: boolean; is_active: boolean;
 }
 
 const maintenanceFields = [
@@ -20,7 +20,7 @@ export default function SmsRecipients() {
   const [form, setForm] = useState({
     name: "", phone: "",
     receives_maintenance_low: true, receives_maintenance_medium: true, receives_maintenance_high: true,
-    receives_kb_gaps: true,
+    receives_kb_gaps: true, receives_checkin_checkout: true,
   });
   const [editing, setEditing] = useState<{ id: string; name: string; phone: string } | null>(null);
 
@@ -50,7 +50,7 @@ export default function SmsRecipients() {
   const add = async () => {
     if (!canSave) return;
     await supabase.from("sms_recipients").insert({ ...form, phone: phoneDigits, is_active: true });
-    setForm({ name: "", phone: "", receives_maintenance_low: true, receives_maintenance_medium: true, receives_maintenance_high: true, receives_kb_gaps: true });
+    setForm({ name: "", phone: "", receives_maintenance_low: true, receives_maintenance_medium: true, receives_maintenance_high: true, receives_kb_gaps: true, receives_checkin_checkout: true });
     setAdding(false);
     load();
   };
@@ -115,6 +115,10 @@ export default function SmsRecipients() {
               <input type="checkbox" checked={form.receives_kb_gaps} onChange={(e) => setForm({ ...form, receives_kb_gaps: e.target.checked })} className="rounded w-5 h-5" />
               KB gap escalations
             </label>
+            <label className="flex items-center gap-2 text-base text-gray-600">
+              <input type="checkbox" checked={form.receives_checkin_checkout} onChange={(e) => setForm({ ...form, receives_checkin_checkout: e.target.checked })} className="rounded w-5 h-5" />
+              Check-in / checkout requests
+            </label>
           </div>
           <button onClick={add} disabled={!canSave} className={`px-5 py-2 text-base font-medium rounded-lg ${canSave ? "bg-gray-900 text-white hover:bg-gray-800" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}>Save</button>
         </div>
@@ -130,6 +134,7 @@ export default function SmsRecipients() {
                 <span>Maintenance</span>
               </th>
               <th className="text-center px-5 py-4 font-medium">KB Gaps</th>
+              <th className="text-center px-5 py-4 font-medium">Check-in/out</th>
               <th className="px-5 py-4 font-medium" />
             </tr>
             <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wider">
@@ -137,6 +142,7 @@ export default function SmsRecipients() {
               {maintenanceFields.map((f) => (
                 <th key={f.key} className="px-3 py-2 font-medium text-center">{f.label}</th>
               ))}
+              <th />
               <th />
               <th />
             </tr>
@@ -173,6 +179,10 @@ export default function SmsRecipients() {
                 <td className="px-5 py-4 text-center">
                   <button onClick={() => toggle(r.id, "receives_kb_gaps", r.receives_kb_gaps)}
                     className={`w-6 h-6 rounded ${r.receives_kb_gaps ? "bg-blue-500" : "bg-gray-200"}`} />
+                </td>
+                <td className="px-5 py-4 text-center">
+                  <button onClick={() => toggle(r.id, "receives_checkin_checkout", r.receives_checkin_checkout)}
+                    className={`w-6 h-6 rounded ${r.receives_checkin_checkout ? "bg-purple-500" : "bg-gray-200"}`} />
                 </td>
                 <td className="px-5 py-4 text-right">
                   <div className="flex gap-1 justify-end">

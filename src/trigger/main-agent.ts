@@ -93,6 +93,26 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "handle_checkin_checkout",
+    description:
+      "Handle a guest request for early check-in or late checkout. Use this when the guest wants to arrive earlier or leave later than the standard times.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        request_type: {
+          type: "string",
+          enum: ["early_checkin", "late_checkout"],
+          description: "Whether the guest wants early check-in or late checkout",
+        },
+        requested_time: {
+          type: "string",
+          description: "The specific time the guest requested, if mentioned (e.g. '1pm', '2 hours early'). Empty string if not mentioned.",
+        },
+      },
+      required: ["request_type", "requested_time"],
+    },
+  },
+  {
     name: "escalate_to_human",
     description:
       "Escalate to a human host — the request doesn't fit any category, it's a complaint, billing issue, or something that can't be handled automatically",
@@ -462,6 +482,47 @@ async function subWorkflowD(
   // D4: TERMINATE — no return, no reply
 }
 
+// ─── Sub-Workflow E: Check-In / Checkout Request ────────────────────
+
+async function subWorkflowE(
+  requestType: string,
+  requestedTime: string,
+  ctx: AgentContext
+): Promise<string> {
+  const supabase = getSupabaseClient();
+
+  // E1: Fetch SMS recipients tagged for check-in/checkout notifications
+  const { data: recipients } = await supabase
+    .from("sms_recipients")
+    .select("*")
+    .eq("receives_checkin_checkout", true)
+    .eq("is_active", true);
+
+  // E2: Send SMS to each recipient
+  let smsSent = 0;
+  if (recipients && recipients.length > 0) {
+    const typeLabel = requestType === "early_checkin" ? "Early check-in" : "Late checkout";
+    const timeNote = requestedTime ? ` (requested: ${requestedTime})` : "";
+    const smsBody = `🕐 ${typeLabel} request${timeNote} at ${ctx.propertyName}. Guest: ${ctx.guestName}. Please confirm availability.`;
+    for (const r of recipients) {
+      try {
+        await sendSms(r.phone, smsBody);
+        smsSent++;
+      } catch (e) {
+        logger.error("SMS send failed", { recipient: r.name, error: String(e) });
+      }
+    }
+  }
+
+  logger.info("Check-in/checkout request processed", {
+    requestType,
+    propertyId: ctx.propertyId,
+    smsSent,
+  });
+
+  return `Request forwarded to cleaning team (${smsSent} notified). Tell the guest: "Not a problem. I'm going to check with our cleaning team to see if it's possible and let you know."`;
+}
+
 // ─── Main Agent Workflow ─────────────────────────────────────────────
 
 export const mainAgentWorkflow = task({
@@ -639,6 +700,9 @@ Guest name: ${guestName}
      troubleshooting steps and the problem persists.
    - process_extra_request — Guest is requesting an additional item
      or service (towels, toiletries, blankets, pillows, etc.)
+   - handle_checkin_checkout — Guest is asking about early check-in
+     or late checkout. Always use this tool for these requests. Do NOT
+     use the knowledge base for check-in/checkout time change requests.
    - escalate_to_human — The request doesn't fit any category above,
      or it's a complaint, billing issue, or something you can't handle.
 
@@ -654,8 +718,15 @@ confirmation AND the guest confirmed (e.g. "yes", "correct", "that's right",
 "please", thumbs up, etc.). If the guest's latest message IS that confirmation,
 go ahead and call the tool now.
 
-This does NOT apply to use_knowledge_base or escalate_to_human. Those can be
-called immediately without confirmation.
+This does NOT apply to use_knowledge_base, escalate_to_human, or
+handle_checkin_checkout. Those can be called immediately without confirmation.
+
+# Check-in / Checkout Requests
+When you call handle_checkin_checkout and get the result back, ALWAYS reply
+to the guest with exactly this message (translated to the guest's language):
+"Not a problem. I'm going to check with our cleaning team to see if it's
+possible and let you know."
+Do not add anything else. Do not mention SMS, internal systems, or tickets.
 
 4. After receiving the tool result, decide what to do:
    - If the tool result indicates escalation — do NOT reply to the guest. Stay silent.
@@ -725,6 +796,15 @@ called immediately without confirmation.
 
           case "process_extra_request": {
             toolResult = await subWorkflowC(toolInput.item_requested, agentCtx);
+            break;
+          }
+
+          case "handle_checkin_checkout": {
+            toolResult = await subWorkflowE(
+              toolInput.request_type,
+              toolInput.requested_time,
+              agentCtx
+            );
             break;
           }
 
