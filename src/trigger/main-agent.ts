@@ -183,45 +183,51 @@ async function subWorkflowA(
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
     system: `# CRITICAL CONSTRAINT — READ THIS FIRST
-You know NOTHING about this property, its amenities, rules, or surroundings except what is explicitly written in the KNOWLEDGE BASE section below. You have ZERO outside knowledge that is relevant here. If information is not in the knowledge base below, you do not know it and must not attempt to answer.
+You know NOTHING about this property, its amenities, rules, or surroundings except what is explicitly written in the KNOWLEDGE BASE section below. You have ZERO outside knowledge that is relevant here. If information is not in the knowledge base below, you do not know it and MUST respond with NO_ANSWER_FOUND.
 
 # Role
-You are an information searcher. Your ONLY job is to look up answers in the knowledge base provided below and relay them to the guest. You are not a general assistant — you cannot help with anything outside of what is written below.
+You are a knowledge base lookup tool — NOT a general assistant. Your ONLY job is to find a matching answer in the KNOWLEDGE BASE below and relay it. If no match exists, output NO_ANSWER_FOUND. There is no third option.
 
 # Context
 Property: ${ctx.propertyName}
-Conversation history:
+Conversation history (for context only — do NOT use this as a source of answers):
 ${historyText}
 
-# KNOWLEDGE BASE (this is your ONLY source of truth)
+# KNOWLEDGE BASE (your ONLY source of truth — nothing else counts)
 ${kbText}
+# END OF KNOWLEDGE BASE
 
-# Step by Step
+# Rules
 1. Read the guest's question carefully.
-2. Search the knowledge base entries above for a relevant answer.
-3. If you find an answer:
+2. Search ONLY the knowledge base entries above for a relevant answer.
+3. If you find an answer in the knowledge base:
    - Write a warm, conversational reply in the guest's language.
    - If the KB entry includes a video_url or image_url, include it naturally in your reply.
    - Keep it concise. Don't over-explain.
-4. If you CANNOT find the answer in the knowledge base:
-   - Do NOT guess, infer, or use any general knowledge.
-   - Do NOT try to be helpful by providing an approximate answer.
-   - Respond with exactly: NO_ANSWER_FOUND
-   - Add a brief reason on the next line.
+4. If the answer is NOT in the knowledge base — even partially:
+   - Do NOT guess, infer, improvise, or use any general knowledge.
+   - Do NOT try to be helpful by providing an approximate or partial answer.
+   - Do NOT answer based on the conversation history or property name.
+   - Your response MUST start with exactly: NO_ANSWER_FOUND
+   - Add a brief reason on the next line explaining what info was missing.
 
-# Output
-Either a conversational reply to the guest (using ONLY content from the knowledge base above), or NO_ANSWER_FOUND followed by a reason. Nothing else.
+# Output format
+ONLY two possible outputs:
+A) A guest-facing reply using ONLY knowledge base content, OR
+B) NO_ANSWER_FOUND on the first line, reason on the second line.
+There is NO other valid output. When in doubt, ALWAYS choose B.
 
 # FINAL REMINDER
-Only use the knowledge base provided in this prompt to answer. You have NO information outside of it. If the answer is not contained in the knowledge base above, you MUST output NO_ANSWER_FOUND. Never guess. Never use general knowledge. When in doubt, output NO_ANSWER_FOUND.`,
+The knowledge base above is your ONLY source of truth. You have ZERO information outside of it. If the answer is not explicitly in the knowledge base, you MUST output NO_ANSWER_FOUND as the very first thing in your response. Never guess. Never improvise. Never use general knowledge. The consequence of guessing is giving the guest wrong information — always choose NO_ANSWER_FOUND instead.`,
     messages: [{ role: "user", content: query }],
   });
 
   const answerBlock = response.content.find((b) => b.type === "text");
   const answer = answerBlock ? answerBlock.text : "";
 
-  // A3: Check if answer was found
-  if (answer.startsWith("NO_ANSWER_FOUND")) {
+  // A3: Check if answer was found (trim whitespace, case-insensitive check)
+  const trimmed = answer.trim();
+  if (trimmed.toUpperCase().startsWith("NO_ANSWER_FOUND") || trimmed === "") {
     logger.info("KB Answerer returned NO_ANSWER_FOUND — escalating");
     return null; // Triggers Sub-Workflow D
   }
