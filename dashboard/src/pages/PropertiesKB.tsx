@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
-import { RefreshCw, Trash2, X, Plus, HelpCircle, Link, Pencil, Check } from "lucide-react";
+import { RefreshCw, Trash2, X, Plus, HelpCircle, Link, Pencil, Check, Copy, ArrowRight } from "lucide-react";
 
 interface Property {
   id: string;
@@ -71,6 +71,13 @@ export default function PropertiesKB() {
   const [kbCounts, setKbCounts] = useState<Record<string, number>>({});
   const [gapCounts, setGapCounts] = useState<Record<string, number>>({});
 
+  // Clone/forward mode
+  const [cloneMode, setCloneMode] = useState(false);
+  const [cloneSelected, setCloneSelected] = useState<Set<string>>(new Set());
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardTargets, setForwardTargets] = useState<Set<string>>(new Set());
+  const [forwarding, setForwarding] = useState(false);
+
   // New entry form
   const [newQ, setNewQ] = useState("");
   const [newA, setNewA] = useState("");
@@ -115,7 +122,7 @@ export default function PropertiesKB() {
       .then(({ data }) => setCooldowns((data as Cooldown[]) ?? []));
   };
 
-  useEffect(loadRightPanel, [selectedId]);
+  useEffect(() => { loadRightPanel(); exitCloneMode(); }, [selectedId]);
 
   const refreshAfterChange = () => { loadRightPanel(); loadHealthCounts(); };
 
@@ -208,6 +215,37 @@ export default function PropertiesKB() {
     if (!newUrlInput.trim()) return;
     setNewUrls([...newUrls, newUrlInput.trim()]);
     setNewUrlInput("");
+  };
+
+  const toggleCloneEntry = (id: string) => {
+    setCloneSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitCloneMode = () => {
+    setCloneMode(false);
+    setCloneSelected(new Set());
+    setShowForwardModal(false);
+    setForwardTargets(new Set());
+  };
+
+  const forwardEntries = async () => {
+    if (forwardTargets.size === 0 || cloneSelected.size === 0) return;
+    setForwarding(true);
+    const toCopy = entries.filter((e) => cloneSelected.has(e.id));
+    const rows = [];
+    for (const target of forwardTargets) {
+      for (const e of toCopy) {
+        rows.push({ property_id: target, title: e.title, content: e.content, image_url: e.image_url });
+      }
+    }
+    await supabase.from("knowledge_bases").insert(rows);
+    setForwarding(false);
+    exitCloneMode();
+    loadHealthCounts();
   };
 
   const selected = properties.find((p) => p.id === selectedId);
@@ -392,10 +430,78 @@ export default function PropertiesKB() {
               </div>
             </div>
 
+            {/* Clone/Forward toolbar */}
+            {entries.length > 0 && (
+              <div className="flex items-center gap-2 mb-3">
+                {!cloneMode ? (
+                  <button onClick={() => setCloneMode(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
+                    <Copy size={14} /> Clone
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={() => { const allIds = new Set(entries.map((e) => e.id)); setCloneSelected((prev) => prev.size === entries.length ? new Set() : allIds); }}
+                      className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
+                      {cloneSelected.size === entries.length ? "Deselect All" : "Select All"}
+                    </button>
+                    <button onClick={() => setShowForwardModal(true)} disabled={cloneSelected.size === 0}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50">
+                      <ArrowRight size={14} /> Forward ({cloneSelected.size})
+                    </button>
+                    <button onClick={exitCloneMode}
+                      className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600">
+                      Cancel
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Forward modal */}
+            {showForwardModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Forward {cloneSelected.size} Q&A to...</h3>
+                  <p className="text-sm text-gray-400 mb-4">Select which properties to copy into</p>
+                  <div className="max-h-64 overflow-y-auto space-y-1 mb-4">
+                    {properties.filter((p) => p.id !== selectedId).map((p) => (
+                      <label key={p.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input type="checkbox" checked={forwardTargets.has(p.id)}
+                          onChange={() => setForwardTargets((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                            return next;
+                          })}
+                          className="rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
+                        <span className="text-sm text-gray-700">{p.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setShowForwardModal(false)}
+                      className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+                    <button onClick={forwardEntries} disabled={forwardTargets.size === 0 || forwarding}
+                      className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50">
+                      {forwarding ? "Copying..." : `Copy to ${forwardTargets.size} ${forwardTargets.size === 1 ? "property" : "properties"}`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* KB entries — click to edit, auto-saves on blur */}
             <div className="space-y-3">
               {entries.map((e) => (
-                <InlineEntry key={e.id} entry={e} onDelete={removeEntry} parseUrls={parseUrls} onRefresh={loadRightPanel} />
+                <div key={e.id} className="flex items-start gap-2">
+                  {cloneMode && (
+                    <input type="checkbox" checked={cloneSelected.has(e.id)}
+                      onChange={() => toggleCloneEntry(e.id)}
+                      className="mt-5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 shrink-0" />
+                  )}
+                  <div className="flex-1">
+                    <InlineEntry entry={e} onDelete={removeEntry} parseUrls={parseUrls} onRefresh={loadRightPanel} />
+                  </div>
+                </div>
               ))}
               {entries.length === 0 && (
                 <div className="text-center py-8 text-base text-gray-400">No Q&A entries yet. Add your first one above.</div>

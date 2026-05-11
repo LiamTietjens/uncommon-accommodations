@@ -88,7 +88,7 @@ export async function createProject(params: {
       cleaner_description: params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
       begin_time: `${beginDate} ${beginTimeOnly}`,
       end_time: `${endDate} ${endTimeOnly}`,
-      project_type_id: 1,
+      project_type_id: 4,
       use_default_checklist: false,
       price: 0,
       publish: true,
