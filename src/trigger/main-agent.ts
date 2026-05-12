@@ -777,6 +777,11 @@ Do not add anything else. Do not mention SMS, internal systems, or tickets.
 
         // Handle escalation (HARD STOP — Sub-Workflow D)
         if (toolName === "escalate_to_human") {
+          await supabase.from("agent_activity_log").insert({
+            property_id: agentCtx.propertyId,
+            reservation_uuid: agentCtx.reservationUuid,
+            action_type: "escalation",
+          });
           await subWorkflowD(toolInput.reason, messageBody, agentCtx);
           return { status: "escalated", reason: toolInput.reason };
         }
@@ -789,9 +794,19 @@ Do not add anything else. Do not mention SMS, internal systems, or tickets.
             const answer = await subWorkflowA(toolInput.query, agentCtx);
             if (answer === null) {
               // KB had no answer → HARD STOP, escalate to human immediately
+              await supabase.from("agent_activity_log").insert({
+                property_id: agentCtx.propertyId,
+                reservation_uuid: agentCtx.reservationUuid,
+                action_type: "escalation",
+              });
               await subWorkflowD("Knowledge base had no answer", messageBody, agentCtx);
               return { status: "escalated", reason: "kb_no_answer" };
             }
+            await supabase.from("agent_activity_log").insert({
+              property_id: agentCtx.propertyId,
+              reservation_uuid: agentCtx.reservationUuid,
+              action_type: "kb_answer",
+            });
             toolResult = answer;
             break;
           }
@@ -802,11 +817,21 @@ Do not add anything else. Do not mention SMS, internal systems, or tickets.
               toolInput.guest_context,
               agentCtx
             );
+            await supabase.from("agent_activity_log").insert({
+              property_id: agentCtx.propertyId,
+              reservation_uuid: agentCtx.reservationUuid,
+              action_type: "maintenance",
+            });
             break;
           }
 
           case "process_extra_request": {
             toolResult = await subWorkflowC(toolInput.item_requested, agentCtx);
+            await supabase.from("agent_activity_log").insert({
+              property_id: agentCtx.propertyId,
+              reservation_uuid: agentCtx.reservationUuid,
+              action_type: "extra_request",
+            });
             break;
           }
 
@@ -816,6 +841,11 @@ Do not add anything else. Do not mention SMS, internal systems, or tickets.
               toolInput.requested_time,
               agentCtx
             );
+            await supabase.from("agent_activity_log").insert({
+              property_id: agentCtx.propertyId,
+              reservation_uuid: agentCtx.reservationUuid,
+              action_type: "checkin_checkout",
+            });
             break;
           }
 
