@@ -12,14 +12,15 @@ const levelColor: Record<string, string> = {
 const levelOrder = ["high", "medium", "low"];
 const levelLabel: Record<string, string> = { low: "Low", medium: "Medium", high: "High" };
 
-type Tab = "urgency" | "extras";
+type Tab = "general" | "urgency" | "extras";
 const tabs: { key: Tab; label: string }[] = [
+  { key: "general", label: "General" },
   { key: "urgency", label: "Urgency Levels" },
   { key: "extras", label: "Allowed Extras" },
 ];
 
 export default function AgentConfig() {
-  const [tab, setTab] = useState<Tab>("urgency");
+  const [tab, setTab] = useState<Tab>("general");
 
   return (
     <div className="max-w-5xl mx-auto px-8 py-10">
@@ -37,8 +38,65 @@ export default function AgentConfig() {
         ))}
       </div>
 
+      {tab === "general" && <GeneralTab />}
       {tab === "urgency" && <UrgencyTab />}
       {tab === "extras" && <AllowedExtrasTab />}
+    </div>
+  );
+}
+
+function GeneralTab() {
+  const [cooldownHours, setCooldownHours] = useState("8");
+  const [footer, setFooter] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(true);
+
+  useEffect(() => {
+    supabase.from("agent_settings").select("key, value").in("key", ["cooldown_hours", "message_footer"])
+      .then(({ data }) => {
+        for (const row of data ?? []) {
+          if (row.key === "cooldown_hours") setCooldownHours(row.value);
+          if (row.key === "message_footer") setFooter(row.value);
+        }
+      });
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    await supabase.from("agent_settings").update({ value: cooldownHours }).eq("key", "cooldown_hours");
+    await supabase.from("agent_settings").update({ value: footer }).eq("key", "message_footer");
+    setSaving(false);
+    setSaved(true);
+  };
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">Cooldown Duration</h3>
+        <p className="text-base text-gray-400 mb-4">How many hours the AI pauses on a property after escalating to a human.</p>
+        <div className="flex items-center gap-3">
+          <input type="number" min="1" max="72" step="1" value={cooldownHours}
+            onChange={(e) => { setCooldownHours(e.target.value); setSaved(false); }}
+            className="w-24 px-4 py-2.5 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300" />
+          <span className="text-base text-gray-500">hours</span>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">Message Footer</h3>
+        <p className="text-base text-gray-400 mb-4">Appended to every AI reply sent to guests.</p>
+        <textarea value={footer} onChange={(e) => { setFooter(e.target.value); setSaved(false); }} rows={4}
+          className="w-full px-5 py-4 text-base border border-gray-200 rounded-xl bg-white resize-y leading-relaxed focus:outline-none focus:ring-2 focus:ring-gray-300"
+          placeholder="e.g. — This message was sent by our AI assistant." />
+      </div>
+
+      <div className="flex items-center gap-4">
+        <button onClick={save} disabled={saved || saving}
+          className="flex items-center gap-2 px-5 py-2 text-base font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50">
+          <Check size={18} /> {saving ? "Saving..." : "Save"}
+        </button>
+        {saved && <span className="text-sm text-gray-400">All changes saved</span>}
+      </div>
     </div>
   );
 }

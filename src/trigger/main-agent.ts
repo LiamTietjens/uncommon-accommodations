@@ -450,9 +450,15 @@ async function subWorkflowD(
     reservation_uuid: ctx.reservationUuid,
   });
 
-  // D2: Set 8hr cooldown
+  // D2: Set cooldown (configurable duration)
+  const { data: cooldownSetting } = await supabase
+    .from("agent_settings")
+    .select("value")
+    .eq("key", "cooldown_hours")
+    .single();
+  const cooldownHours = cooldownSetting ? parseFloat(cooldownSetting.value) : 8;
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const expiresAt = new Date(now.getTime() + cooldownHours * 60 * 60 * 1000);
   await supabase.from("cooldowns").insert({
     property_id: ctx.propertyId,
     activated_at: now.toISOString(),
@@ -879,8 +885,13 @@ Do not add anything else. Do not mention SMS, internal systems, or tickets.
       return { status: "error", reason: "no_reply_generated" };
     }
 
-    // Append AI disclaimer footer
-    const footer = "\n\n—\nThis message was automatically sent by my AI agent. In case of emergency, please call 610-574-1334.";
+    // Append configurable footer
+    const { data: footerSetting } = await getSupabaseClient()
+      .from("agent_settings")
+      .select("value")
+      .eq("key", "message_footer")
+      .single();
+    const footer = footerSetting?.value ?? "\n\n—\nThis message was automatically sent by my AI agent. In case of emergency, please call 610-574-1334.";
     const finalReply = replyText + footer;
 
     // Send the reply via Hospitable
