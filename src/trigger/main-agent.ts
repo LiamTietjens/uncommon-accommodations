@@ -693,13 +693,13 @@ export const mainAgentWorkflow = task({
       conversationHistory = [{ role: "guest", content: messageBody }];
     }
 
-    // Build agent context
+    // Build agent context (latestMessage updated after bundling below)
     const agentCtx: AgentContext = {
       propertyId: property.id,
       propertyName: property.name,
       reservationUuid,
       conversationHistory,
-      latestMessage: messageBody,
+      latestMessage: messageBody, // will be overwritten with bundledMessage
       guestName,
       turnoPropertyId: property.turno_property_id,
       timezone: property.timezone || "America/New_York",
@@ -711,7 +711,8 @@ export const mainAgentWorkflow = task({
       .map((m) => `${m.role === "guest" ? "Guest" : "Host"}: ${m.content}`)
       .join("\n");
 
-    // Extract unanswered guest messages (all guest messages after the last host reply)
+    // Bundle all unanswered guest messages into a single message
+    // so the AI treats them as one cohesive request
     let unansweredMessages: string[] = [];
     for (let i = conversationHistory.length - 1; i >= 0; i--) {
       if (conversationHistory[i].role === "host") break;
@@ -719,11 +720,16 @@ export const mainAgentWorkflow = task({
         unansweredMessages.unshift(conversationHistory[i].content);
       }
     }
-    if (unansweredMessages.length === 0) unansweredMessages = [messageBody];
+    const bundledMessage = unansweredMessages.length > 1
+      ? unansweredMessages.join("\n\n")
+      : unansweredMessages[0] || messageBody;
 
-    const latestMessagesText = unansweredMessages.length === 1
-      ? `The guest's latest message is:\n"${unansweredMessages[0]}"`
-      : `The guest sent ${unansweredMessages.length} messages since the last reply. Address ALL of them:\n${unansweredMessages.map((m, i) => `${i + 1}. "${m}"`).join("\n")}`;
+    agentCtx.latestMessage = bundledMessage;
+
+    logger.info("Bundled guest message", {
+      messageCount: unansweredMessages.length,
+      bundledLength: bundledMessage.length,
+    });
 
     // Step 6: Start the agent loop
     const anthropic = new Anthropic();
@@ -731,7 +737,7 @@ export const mainAgentWorkflow = task({
     const agentMessages: Anthropic.MessageParam[] = [
       {
         role: "user",
-        content: `Here is the conversation so far:\n\n${historyText}\n\n${latestMessagesText}`,
+        content: `Here is the conversation so far:\n\n${historyText}\n\nThe guest's latest message is:\n"${bundledMessage}"`,
       },
     ];
 
@@ -758,12 +764,10 @@ Guest name: ${guestName}
 
 # Step by Step
 1. Read the full conversation to understand context and tone.
-2. Identify ALL unanswered guest messages (every guest message since the last
-   host reply). The guest may have sent multiple messages in a row. You MUST
-   address every single one. Do NOT skip or ignore any message.
-3. For EACH unanswered guest message, classify it and call the appropriate tool.
-   You can and should call multiple tools in a single turn when the guest has
-   sent multiple messages that need different handling:
+2. Focus on the guest's latest message. It may contain multiple topics or
+   requests. You must address ALL parts of the message, not just one.
+3. Classify each part of the request and call the appropriate tool(s). You
+   can and should call multiple tools when the message covers different topics:
    - use_knowledge_base — ALWAYS call this first for any question or issue,
      including when a guest reports something not working (e.g. fireplace,
      thermostat, appliance, TV). The KB often has operating instructions
@@ -780,17 +784,11 @@ Guest name: ${guestName}
      use the knowledge base for check-in/checkout time change requests.
    - escalate_to_human — The request doesn't fit any category above,
      or it's a complaint, billing issue, or something you can't handle.
-4. After receiving ALL tool results, compose a SINGLE reply that addresses
-   every unanswered guest message:
+4. After receiving all tool results, compose a single reply that addresses
+   every part of the guest's message:
    - If any tool result indicates escalation — do NOT reply to the guest. Stay silent.
    - Otherwise — compose a warm, concise reply that covers all topics.
      Do not mention internal systems, tickets, tools, or databases.
-
-# Multiple Messages
-When the guest has sent more than one unanswered message, you MUST handle each
-one individually with the correct tool. For example, if the guest asks a question
-about the property AND requests extra towels, you must call use_knowledge_base
-for the question AND address the towels request separately.
 
 # Confirmation Before Action
 Before calling raise_maintenance_ticket or process_extra_request, you MUST first
