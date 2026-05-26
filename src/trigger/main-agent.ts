@@ -579,7 +579,8 @@ export const mainAgentWorkflow = task({
     }
 
     // 30-second debounce: wait, then check if a newer guest message arrived
-    const webhookMessageTimestamp = payload.received_at;
+    // Use the message's created_at (when guest actually sent it), not webhook arrival time
+    const messageCreatedAt = (webhookData as any)?.created_at || payload.received_at;
     await wait.for({ seconds: 30 });
 
     if (reservationUuid) {
@@ -589,10 +590,13 @@ export const mainAgentWorkflow = task({
           (m: any) => m.sender_type === "guest"
         );
         const newerExists = guestMessages.some(
-          (m: any) => m.created_at && m.created_at > webhookMessageTimestamp
+          (m: any) => m.created_at && m.created_at > messageCreatedAt
         );
         if (newerExists) {
-          logger.info("Newer guest message exists — skipping this run", { reservationUuid });
+          logger.info("Newer guest message exists — skipping this run", {
+            reservationUuid,
+            thisMessageAt: messageCreatedAt,
+          });
           return { status: "skipped", reason: "newer_message_exists" };
         }
       } catch (e) {
