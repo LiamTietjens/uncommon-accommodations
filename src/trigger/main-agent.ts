@@ -711,13 +711,27 @@ export const mainAgentWorkflow = task({
       .map((m) => `${m.role === "guest" ? "Guest" : "Host"}: ${m.content}`)
       .join("\n");
 
+    // Extract unanswered guest messages (all guest messages after the last host reply)
+    let unansweredMessages: string[] = [];
+    for (let i = conversationHistory.length - 1; i >= 0; i--) {
+      if (conversationHistory[i].role === "host") break;
+      if (conversationHistory[i].role === "guest") {
+        unansweredMessages.unshift(conversationHistory[i].content);
+      }
+    }
+    if (unansweredMessages.length === 0) unansweredMessages = [messageBody];
+
+    const latestMessagesText = unansweredMessages.length === 1
+      ? `The guest's latest message is:\n"${unansweredMessages[0]}"`
+      : `The guest sent ${unansweredMessages.length} messages since the last reply. Address ALL of them:\n${unansweredMessages.map((m, i) => `${i + 1}. "${m}"`).join("\n")}`;
+
     // Step 6: Start the agent loop
     const anthropic = new Anthropic();
 
     const agentMessages: Anthropic.MessageParam[] = [
       {
         role: "user",
-        content: `Here is the conversation so far:\n\n${historyText}\n\nThe guest's latest message is:\n"${messageBody}"`,
+        content: `Here is the conversation so far:\n\n${historyText}\n\n${latestMessagesText}`,
       },
     ];
 
