@@ -14,7 +14,7 @@ The full specification lives in `master-execution-plan.html` (Version 3.0). Refe
 - **Webhook ingress:** Modal (receives Hospitable `message.created` webhooks, forwards to Trigger.dev)
 - **AI:** Claude Sonnet 4.6 (`claude-sonnet-4-6`) via Anthropic API — 3 distinct AI calls (Coordinator, KB Answerer, Urgency Assessor)
 - **Database:** Supabase (Postgres + Auth + RLS)
-- **External APIs:** Hospitable API v2, Turno API v2 (partner-gated), SMSAPI
+- **External APIs:** Hospitable API v2, Turno API v2 (partner-gated), Twilio
 - **Hosting:** Render (dashboard frontend)
 
 ## Architecture
@@ -52,8 +52,9 @@ The agent composes and sends the final guest reply — sub-workflows only perfor
 ```
 HOSPITABLE_API_TOKEN
 TURNO_API_KEY          # Requires partner approval from Turno
-SMSAPI_TOKEN
-SMSAPI_SENDER_NAME
+TWILIO_ACCOUNT_SID
+TWILIO_AUTH_TOKEN
+TWILIO_FROM_NUMBER     # E.164 format, e.g. +16105741334
 SUPABASE_URL
 SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY

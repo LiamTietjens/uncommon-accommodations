@@ -57,27 +57,41 @@ export async function createProject(params: {
   summary: string;
   cleanerDescription: string;
   timezone: string;
+  scheduledBeginTime?: string;
+  scheduledEndTime?: string;
 }) {
-  const local = getLocalHour(params.timezone);
   const pad = (n: number) => String(n).padStart(2, "0");
 
-  // begin = now in local timezone
-  const beginFull = formatLocalTime(new Date(), params.timezone);
-  const beginDate = beginFull.split(" ")[0]; // YYYY-MM-DD
-  const beginTimeOnly = beginFull.split(" ")[1]; // HH:MM:SS
+  let beginTime: string;
+  let endTime: string;
 
-  // end depends on whether it's before or after 3pm local
-  let endDate: string;
-  let endTimeOnly: string;
-  if (local.hour < 15) {
-    // Before 3pm → end at 11:59 PM today (local)
-    endDate = `${local.year}-${pad(local.month)}-${pad(local.day)}`;
-    endTimeOnly = "23:59:00";
+  if (params.scheduledBeginTime && params.scheduledEndTime) {
+    beginTime = params.scheduledBeginTime;
+    endTime = params.scheduledEndTime;
   } else {
-    // 3pm or later → end at 2:59 PM next day (local)
-    const tomorrow = new Date(local.year, local.month - 1, local.day + 1);
-    endDate = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
-    endTimeOnly = "14:59:00";
+    const local = getLocalHour(params.timezone);
+
+    // begin = now in local timezone
+    const beginFull = formatLocalTime(new Date(), params.timezone);
+    const beginDate = beginFull.split(" ")[0]; // YYYY-MM-DD
+    const beginTimeOnly = beginFull.split(" ")[1]; // HH:MM:SS
+
+    // end depends on whether it's before or after 3pm local
+    let endDate: string;
+    let endTimeOnly: string;
+    if (local.hour < 15) {
+      // Before 3pm → end at 11:59 PM today (local)
+      endDate = `${local.year}-${pad(local.month)}-${pad(local.day)}`;
+      endTimeOnly = "23:59:00";
+    } else {
+      // 3pm or later → end at 2:59 PM next day (local)
+      const tomorrow = new Date(local.year, local.month - 1, local.day + 1);
+      endDate = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+      endTimeOnly = "14:59:00";
+    }
+
+    beginTime = `${beginDate} ${beginTimeOnly}`;
+    endTime = `${endDate} ${endTimeOnly}`;
   }
 
   const res = await fetch(`${BASE_URL}/projects`, {
@@ -86,8 +100,8 @@ export async function createProject(params: {
     body: JSON.stringify({
       property_id: params.propertyId,
       cleaner_description: params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
-      begin_time: `${beginDate} ${beginTimeOnly}`,
-      end_time: `${endDate} ${endTimeOnly}`,
+      begin_time: beginTime,
+      end_time: endTime,
       project_type_id: 3,
       use_default_checklist: false,
       price: 0,

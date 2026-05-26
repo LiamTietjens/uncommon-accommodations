@@ -26,6 +26,18 @@ export async function getReservationMessages(uuid: string) {
   return res.json();
 }
 
+export function extractReservationDates(reservationData: any): {
+  checkIn: string | null;
+  checkOut: string | null;
+} {
+  const data = reservationData?.data?.attributes || reservationData?.data || reservationData || {};
+  const checkIn =
+    data.check_in || data.checkin || data.arrival_date || data.start_date || null;
+  const checkOut =
+    data.check_out || data.checkout || data.departure_date || data.end_date || null;
+  return { checkIn, checkOut };
+}
+
 export async function sendMessage(reservationUuid: string, body: string) {
   const res = await fetch(`${BASE_URL}/reservations/${reservationUuid}/messages`, {
     method: "POST",

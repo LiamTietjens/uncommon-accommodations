@@ -1,7 +1,7 @@
-import { task, logger } from "@trigger.dev/sdk";
+import { task, logger, wait } from "@trigger.dev/sdk";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSupabaseClient } from "../lib/supabase.js";
-import { getReservation, getReservationMessages, sendMessage } from "../lib/hospitable.js";
+import { getReservation, getReservationMessages, sendMessage, extractReservationDates } from "../lib/hospitable.js";
 import { createProject, getLocalHour } from "../lib/turno.js";
 import { sendSms } from "../lib/sms.js";
 
@@ -385,9 +385,26 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
   // C2b: Allowed — create Turno task
   let turnoProjectId: string | null = null;
 
-  // Determine delivery estimate based on local time
+  // Check if guest is messaging before their stay — schedule for arrival day if so
   const local = getLocalHour(ctx.timezone);
-  const deliveryEstimate = local.hour < 15 ? "today by the end of the day" : "tomorrow by 3pm";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const todayStr = `${local.year}-${pad(local.month)}-${pad(local.day)}`;
+  let scheduledBeginTime: string | undefined;
+  let scheduledEndTime: string | undefined;
+  let deliveryEstimate = local.hour < 15 ? "today by the end of the day" : "tomorrow by 3pm";
+
+  try {
+    const resData = await getReservation(ctx.reservationUuid);
+    const { checkIn } = extractReservationDates(resData);
+    if (checkIn && checkIn > todayStr) {
+      scheduledBeginTime = `${checkIn} 10:00:00`;
+      scheduledEndTime = `${checkIn} 23:59:00`;
+      deliveryEstimate = "on your arrival day";
+      logger.info("Extra request scheduled for check-in day", { checkIn, todayStr });
+    }
+  } catch (e) {
+    logger.warn("Failed to fetch reservation dates — using immediate scheduling", { error: String(e) });
+  }
 
   if (ctx.turnoPropertyId) {
     try {
@@ -396,6 +413,8 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
         summary: `Guest extra request: ${itemRequested}`,
         cleanerDescription: `${itemRequested}. Please deliver within the task window.`,
         timezone: ctx.timezone,
+        scheduledBeginTime,
+        scheduledEndTime,
       });
       turnoProjectId = String(turnoResult?.data?.id || null);
       logger.info("Turno project created", { turnoProjectId });
@@ -557,6 +576,28 @@ export const mainAgentWorkflow = task({
     if (senderType === "host") {
       logger.info("Host message — ignoring");
       return { status: "skipped", reason: "host_message" };
+    }
+
+    // 30-second debounce: wait, then check if a newer guest message arrived
+    const webhookMessageTimestamp = payload.received_at;
+    await wait.for({ seconds: 30 });
+
+    if (reservationUuid) {
+      try {
+        const recentMessages = await getReservationMessages(reservationUuid);
+        const guestMessages = (recentMessages?.data || []).filter(
+          (m: any) => m.sender_type === "guest"
+        );
+        const newerExists = guestMessages.some(
+          (m: any) => m.created_at && m.created_at > webhookMessageTimestamp
+        );
+        if (newerExists) {
+          logger.info("Newer guest message exists — skipping this run", { reservationUuid });
+          return { status: "skipped", reason: "newer_message_exists" };
+        }
+      } catch (e) {
+        logger.warn("Failed to check for newer messages — proceeding anyway", { error: String(e) });
+      }
     }
 
     // --- TESTING FILTER: only process allowed reservations ---
