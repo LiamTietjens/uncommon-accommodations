@@ -495,7 +495,7 @@ async function subWorkflowD(
     .eq("is_active", true);
 
   if (recipients && recipients.length > 0) {
-    const smsBody = `⚠️ AI escalated at ${ctx.propertyName}: "${guestQuestion}". 8hr cooldown active. Please respond manually.`;
+    const smsBody = `⚠️ AI escalated at ${ctx.propertyName}: "${guestQuestion}". Cooldown active. Please review all recent guest messages and respond manually.`;
     for (const r of recipients) {
       try {
         await sendSms(r.phone, smsBody);
@@ -681,7 +681,9 @@ export const mainAgentWorkflow = task({
     let conversationHistory: { role: string; content: string }[] = [];
     try {
       const messagesData = await getReservationMessages(reservationUuid);
-      const messages = messagesData?.data || [];
+      const messages = (messagesData?.data || []).sort(
+        (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
       conversationHistory = messages.map((m: any) => ({
         role: m.sender_type === "guest" ? "guest" : "host",
         content: m.body || "",
@@ -854,7 +856,7 @@ possible and let you know. Someone will reach out to confirm this soon."`;
             reservation_uuid: agentCtx.reservationUuid,
             action_type: "escalation",
           });
-          await subWorkflowD(toolInput.reason, messageBody, agentCtx);
+          await subWorkflowD(toolInput.reason, bundledMessage, agentCtx);
           return { status: "escalated", reason: toolInput.reason };
         }
 
@@ -871,7 +873,7 @@ possible and let you know. Someone will reach out to confirm this soon."`;
                 reservation_uuid: agentCtx.reservationUuid,
                 action_type: "escalation",
               });
-              await subWorkflowD("Knowledge base had no answer", messageBody, agentCtx);
+              await subWorkflowD("Knowledge base had no answer", bundledMessage, agentCtx);
               return { status: "escalated", reason: "kb_no_answer" };
             }
             await supabase.from("agent_activity_log").insert({
