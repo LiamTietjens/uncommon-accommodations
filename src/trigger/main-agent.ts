@@ -396,9 +396,10 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
   try {
     const resData = await getReservation(ctx.reservationUuid);
     const { checkIn } = extractReservationDates(resData);
-    if (checkIn && checkIn > todayStr) {
-      scheduledBeginTime = `${checkIn} 10:00:00`;
-      scheduledEndTime = `${checkIn} 23:59:00`;
+    const checkInDate = checkIn?.split(" ")[0]?.split("T")[0]; // extract YYYY-MM-DD
+    if (checkInDate && checkInDate > todayStr) {
+      scheduledBeginTime = `${checkInDate} 10:00:00`;
+      scheduledEndTime = `${checkInDate} 23:59:00`;
       deliveryEstimate = "on your arrival day";
       logger.info("Extra request scheduled for check-in day", { checkIn, todayStr });
     }
