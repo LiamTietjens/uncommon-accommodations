@@ -24,33 +24,35 @@ export default function SmsRecipients() {
   });
   const [editing, setEditing] = useState<{ id: string; name: string; phone: string } | null>(null);
 
-  const normalizePhone = (raw: string) => "+" + raw.replace(/[^\d]/g, "");
-  const hasLeadingZeroAfterCC = (digits: string) => {
+  const isE164 = (raw: string) => /^\+\d{10,15}$/.test(raw.replace(/[\s\-()]/g, ""));
+  const stripFormatting = (raw: string) => raw.replace(/[\s\-()]/g, "");
+  const missingPlus = (raw: string) => {
+    const stripped = stripFormatting(raw);
+    return stripped.length > 0 && !stripped.startsWith("+") && /^\d{10,15}$/.test(stripped);
+  };
+  const hasLeadingZeroAfterCC = (raw: string) => {
+    const digits = stripFormatting(raw).replace(/^\+/, "");
     if (/^[17]/.test(digits) && digits[1] === "0") return true;
     if (/^[2-689]/.test(digits) && digits[2] === "0") return true;
     return false;
   };
-  const isPhoneValid = (raw: string) => {
-    const digits = raw.replace(/[^\d]/g, "");
-    return /^\d{10,15}$/.test(digits) && !hasLeadingZeroAfterCC(digits);
-  };
-  const phoneNormalized = normalizePhone(form.phone);
-  const phoneValid = form.phone === "" || isPhoneValid(form.phone);
-  const phoneDigits = form.phone.replace(/[^\d]/g, "");
-  const phoneLooksLikeLeadingZero = form.phone !== "" && /^\d{10,15}$/.test(phoneDigits) && hasLeadingZeroAfterCC(phoneDigits);
-  const canSave = form.name.trim() !== "" && isPhoneValid(form.phone);
 
-  const editPhoneValid = editing ? (editing.phone === "" || isPhoneValid(editing.phone)) : true;
-  const editPhoneDigits = editing ? editing.phone.replace(/[^\d]/g, "") : "";
-  const editPhoneLooksLikeLeadingZero = editing ? (editing.phone !== "" && /^\d{10,15}$/.test(editPhoneDigits) && hasLeadingZeroAfterCC(editPhoneDigits)) : false;
-  const canSaveEdit = editing ? (editing.name.trim() !== "" && isPhoneValid(editing.phone)) : false;
+  const phoneValid = form.phone === "" || isE164(form.phone);
+  const phoneMissingPlus = missingPlus(form.phone);
+  const phoneLooksLikeLeadingZero = form.phone !== "" && hasLeadingZeroAfterCC(form.phone);
+  const canSave = form.name.trim() !== "" && isE164(form.phone) && !hasLeadingZeroAfterCC(form.phone);
+
+  const editPhoneValid = editing ? (editing.phone === "" || isE164(editing.phone)) : true;
+  const editPhoneMissingPlus = editing ? missingPlus(editing.phone) : false;
+  const editPhoneLooksLikeLeadingZero = editing ? hasLeadingZeroAfterCC(editing.phone) : false;
+  const canSaveEdit = editing ? (editing.name.trim() !== "" && isE164(editing.phone) && !hasLeadingZeroAfterCC(editing.phone)) : false;
 
   const load = () => { supabase.from("sms_recipients").select("*").order("name").then(({ data }) => setRecipients(data ?? [])); };
   useEffect(load, []);
 
   const add = async () => {
     if (!canSave) return;
-    await supabase.from("sms_recipients").insert({ ...form, phone: phoneNormalized, is_active: true });
+    await supabase.from("sms_recipients").insert({ ...form, phone: stripFormatting(form.phone), is_active: true });
     setForm({ name: "", phone: "", receives_maintenance_low: true, receives_maintenance_medium: true, receives_maintenance_high: true, receives_kb_gaps: true, receives_checkin_checkout: true });
     setAdding(false);
     load();
@@ -69,7 +71,7 @@ export default function SmsRecipients() {
 
   const saveEdit = async () => {
     if (!editing || !canSaveEdit) return;
-    await supabase.from("sms_recipients").update({ name: editing.name, phone: "+" + editing.phone.replace(/[^\d]/g, "") }).eq("id", editing.id);
+    await supabase.from("sms_recipients").update({ name: editing.name, phone: stripFormatting(editing.phone) }).eq("id", editing.id);
     setEditing(null);
     load();
   };
@@ -95,9 +97,10 @@ export default function SmsRecipients() {
               <span className="text-sm text-gray-400 font-medium uppercase">Phone (with country code)</span>
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 className={`mt-1.5 w-full px-4 py-2 text-base border rounded-lg ${!phoneValid ? "border-red-400 bg-red-50" : "border-gray-200"}`} placeholder="+49 157 55577318" />
-              {!phoneValid && !phoneLooksLikeLeadingZero && <p className="text-red-500 text-sm mt-1">Enter 10-15 digits: country code + number, no spaces or symbols</p>}
+              {phoneMissingPlus && <p className="text-red-500 text-sm mt-1">Must start with + (e.g. +16465470093)</p>}
+              {!phoneValid && !phoneMissingPlus && !phoneLooksLikeLeadingZero && form.phone !== "" && <p className="text-red-500 text-sm mt-1">Enter a valid E.164 number: +[country code][number], 10-15 digits</p>}
               {phoneLooksLikeLeadingZero && <p className="text-red-500 text-sm mt-1">Remove the leading 0 after the country code (e.g. +49 0157… → +49 157…)</p>}
-              {form.phone && phoneValid && <p className="text-green-600 text-sm mt-1">Will be saved as: {phoneNormalized}</p>}
+              {form.phone && phoneValid && !phoneLooksLikeLeadingZero && <p className="text-green-600 text-sm mt-1">Will be saved as: {stripFormatting(form.phone)}</p>}
             </label>
           </div>
           <div className="mb-4">
@@ -161,14 +164,18 @@ export default function SmsRecipients() {
                       <input value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })}
                         className={`w-full px-3 py-1.5 text-base font-mono border rounded-lg ${!editPhoneValid ? "border-red-400 bg-red-50" : "border-gray-200"}`}
                         placeholder="+49 157 55577318" />
-                      {!editPhoneValid && !editPhoneLooksLikeLeadingZero && <p className="text-red-500 text-xs mt-1">10-15 digits: country code + number</p>}
+                      {editPhoneMissingPlus && <p className="text-red-500 text-xs mt-1">Must start with + (e.g. +16465470093)</p>}
+                      {!editPhoneValid && !editPhoneMissingPlus && !editPhoneLooksLikeLeadingZero && editing.phone !== "" && <p className="text-red-500 text-xs mt-1">Enter a valid E.164 number: +[country code][number]</p>}
                       {editPhoneLooksLikeLeadingZero && <p className="text-red-500 text-xs mt-1">Remove leading 0 after country code</p>}
                     </td>
                   </>
                 ) : (
                   <>
                     <td className="px-5 py-4 text-gray-900">{r.name}</td>
-                    <td className="px-5 py-4 text-gray-500 font-mono text-sm">{r.phone}</td>
+                    <td className="px-5 py-4 font-mono text-sm">
+                      <span className={r.phone.startsWith("+") ? "text-gray-500" : "text-red-500"}>{r.phone}</span>
+                      {!r.phone.startsWith("+") && <p className="text-red-500 text-xs mt-0.5">Missing + prefix — edit to fix</p>}
+                    </td>
                   </>
                 )}
                 {maintenanceFields.map((f) => (
