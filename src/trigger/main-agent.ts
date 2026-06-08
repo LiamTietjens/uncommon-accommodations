@@ -315,7 +315,7 @@ Respond with ONLY the urgency level name (e.g. "high"). No explanation, no other
 
   let smsSent = 0;
   if (recipients && recipients.length > 0) {
-    const smsBody = `🔧 Maintenance [${urgency.toUpperCase()}] at ${ctx.propertyName}: ${issueDescription}`;
+    const smsBody = `🔧 Maintenance [${urgency.toUpperCase()}]\n\n${ctx.propertyName}\n\n${issueDescription}`;
     for (const r of recipients) {
       try {
         await sendSms(r.phone, smsBody);
@@ -432,7 +432,7 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
       .eq("is_active", true);
 
     if (recipients && recipients.length > 0) {
-      const smsBody = `[AI Agent] Extra request approved: ${itemRequested} at ${ctx.propertyName}. No Turno property mapped - manual action needed.`;
+      const smsBody = `[AI Agent] Extra request approved\n\n${ctx.propertyName}\n\n${itemRequested}\n\nNo Turno property mapped — manual action needed.`;
       for (const r of recipients) {
         try {
           await sendSms(r.phone, smsBody);
@@ -496,7 +496,7 @@ async function subWorkflowD(
     .eq("is_active", true);
 
   if (recipients && recipients.length > 0) {
-    const smsBody = `⚠️ AI escalated at ${ctx.propertyName}: "${guestQuestion}". Cooldown active. Please review all recent guest messages and respond manually.`;
+    const smsBody = `⚠️ AI Escalated\n\n${ctx.propertyName}\n\n"${guestQuestion}"\n\nCooldown active. Please review all recent guest messages and respond manually.`;
     for (const r of recipients) {
       try {
         await sendSms(r.phone, smsBody);
@@ -535,7 +535,7 @@ async function subWorkflowE(
   if (recipients && recipients.length > 0) {
     const typeLabel = requestType === "early_checkin" ? "Early check-in" : "Late checkout";
     const timeNote = requestedTime ? ` (requested: ${requestedTime})` : "";
-    const smsBody = `🕐 ${typeLabel} request${timeNote} at ${ctx.propertyName}. Guest: ${ctx.guestName}. Please confirm availability.`;
+    const smsBody = `🕐 ${typeLabel} Request${timeNote}\n\n${ctx.propertyName}\n\nGuest: ${ctx.guestName}\n\nPlease confirm availability.`;
     for (const r of recipients) {
       try {
         await sendSms(r.phone, smsBody);
