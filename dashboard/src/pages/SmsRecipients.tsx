@@ -24,23 +24,24 @@ export default function SmsRecipients() {
   });
   const [editing, setEditing] = useState<{ id: string; name: string; phone: string } | null>(null);
 
-  const normalizePhone = (raw: string) => raw.replace(/[\s\-().+]/g, "");
+  const normalizePhone = (raw: string) => "+" + raw.replace(/[^\d]/g, "");
   const hasLeadingZeroAfterCC = (digits: string) => {
     if (/^[17]/.test(digits) && digits[1] === "0") return true;
     if (/^[2-689]/.test(digits) && digits[2] === "0") return true;
     return false;
   };
   const isPhoneValid = (raw: string) => {
-    const digits = normalizePhone(raw);
+    const digits = raw.replace(/[^\d]/g, "");
     return /^\d{10,15}$/.test(digits) && !hasLeadingZeroAfterCC(digits);
   };
-  const phoneDigits = normalizePhone(form.phone);
+  const phoneNormalized = normalizePhone(form.phone);
   const phoneValid = form.phone === "" || isPhoneValid(form.phone);
+  const phoneDigits = form.phone.replace(/[^\d]/g, "");
   const phoneLooksLikeLeadingZero = form.phone !== "" && /^\d{10,15}$/.test(phoneDigits) && hasLeadingZeroAfterCC(phoneDigits);
   const canSave = form.name.trim() !== "" && isPhoneValid(form.phone);
 
-  const editPhoneDigits = editing ? normalizePhone(editing.phone) : "";
   const editPhoneValid = editing ? (editing.phone === "" || isPhoneValid(editing.phone)) : true;
+  const editPhoneDigits = editing ? editing.phone.replace(/[^\d]/g, "") : "";
   const editPhoneLooksLikeLeadingZero = editing ? (editing.phone !== "" && /^\d{10,15}$/.test(editPhoneDigits) && hasLeadingZeroAfterCC(editPhoneDigits)) : false;
   const canSaveEdit = editing ? (editing.name.trim() !== "" && isPhoneValid(editing.phone)) : false;
 
@@ -49,7 +50,7 @@ export default function SmsRecipients() {
 
   const add = async () => {
     if (!canSave) return;
-    await supabase.from("sms_recipients").insert({ ...form, phone: phoneDigits, is_active: true });
+    await supabase.from("sms_recipients").insert({ ...form, phone: phoneNormalized, is_active: true });
     setForm({ name: "", phone: "", receives_maintenance_low: true, receives_maintenance_medium: true, receives_maintenance_high: true, receives_kb_gaps: true, receives_checkin_checkout: true });
     setAdding(false);
     load();
@@ -68,7 +69,7 @@ export default function SmsRecipients() {
 
   const saveEdit = async () => {
     if (!editing || !canSaveEdit) return;
-    await supabase.from("sms_recipients").update({ name: editing.name, phone: normalizePhone(editing.phone) }).eq("id", editing.id);
+    await supabase.from("sms_recipients").update({ name: editing.name, phone: "+" + editing.phone.replace(/[^\d]/g, "") }).eq("id", editing.id);
     setEditing(null);
     load();
   };
@@ -96,7 +97,7 @@ export default function SmsRecipients() {
                 className={`mt-1.5 w-full px-4 py-2 text-base border rounded-lg ${!phoneValid ? "border-red-400 bg-red-50" : "border-gray-200"}`} placeholder="+49 157 55577318" />
               {!phoneValid && !phoneLooksLikeLeadingZero && <p className="text-red-500 text-sm mt-1">Enter 10-15 digits: country code + number, no spaces or symbols</p>}
               {phoneLooksLikeLeadingZero && <p className="text-red-500 text-sm mt-1">Remove the leading 0 after the country code (e.g. +49 0157… → +49 157…)</p>}
-              {form.phone && phoneValid && <p className="text-green-600 text-sm mt-1">Will be saved as: {phoneDigits}</p>}
+              {form.phone && phoneValid && <p className="text-green-600 text-sm mt-1">Will be saved as: {phoneNormalized}</p>}
             </label>
           </div>
           <div className="mb-4">
