@@ -869,16 +869,21 @@ possible and let you know. Someone will reach out to confirm this soon."`;
           case "use_knowledge_base": {
             const answer = await subWorkflowA(toolInput.query, agentCtx);
             if (answer === null) {
-              logger.info("KB Answerer returned NO_ANSWER_FOUND — returning to coordinator", { query: toolInput.query });
-              toolResult = "NO_ANSWER_FOUND — The knowledge base has no information about this topic. Decide what to do next: if the guest reported something broken or damaged, call raise_maintenance_ticket. If you truly cannot help, call escalate_to_human.";
-            } else {
+              // KB had no answer → HARD STOP, escalate to human immediately
               await supabase.from("agent_activity_log").insert({
                 property_id: agentCtx.propertyId,
                 reservation_uuid: agentCtx.reservationUuid,
-                action_type: "kb_answer",
+                action_type: "escalation",
               });
-              toolResult = answer;
+              await subWorkflowD("Knowledge base had no answer", bundledMessage, agentCtx);
+              return { status: "escalated", reason: "kb_no_answer" };
             }
+            await supabase.from("agent_activity_log").insert({
+              property_id: agentCtx.propertyId,
+              reservation_uuid: agentCtx.reservationUuid,
+              action_type: "kb_answer",
+            });
+            toolResult = answer;
             break;
           }
 
