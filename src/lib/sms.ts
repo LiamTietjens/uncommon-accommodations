@@ -1,24 +1,18 @@
 export async function sendSms(to: string, message: string) {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_FROM_NUMBER;
-  if (!accountSid || !authToken) throw new Error("Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
-  if (!from) throw new Error("Missing TWILIO_FROM_NUMBER");
+  const apiKey = process.env.TELNYX_API_KEY;
+  const from = process.env.TELNYX_FROM_NUMBER;
+  if (!apiKey) throw new Error("Missing TELNYX_API_KEY");
+  if (!from) throw new Error("Missing TELNYX_FROM_NUMBER");
 
-  const params = new URLSearchParams({ To: to, From: from, Body: message });
+  const res = await fetch("https://api.telnyx.com/v2/messages", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ from, to, text: message }),
+  });
 
-  const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: params.toString(),
-    }
-  );
-
-  if (!res.ok) throw new Error(`Twilio failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`Telnyx failed: ${res.status} ${await res.text()}`);
   return res.json();
 }
