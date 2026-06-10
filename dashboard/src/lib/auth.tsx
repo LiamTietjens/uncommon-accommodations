@@ -9,6 +9,7 @@ interface Profile {
   role: "super_admin" | "member";
   can_view_kb: boolean;
   can_view_maintenance: boolean;
+  sms_consent: boolean;
 }
 
 interface AuthState {
@@ -18,6 +19,7 @@ interface AuthState {
   isSuperAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  updateSmsConsent: (consent: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -63,11 +65,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
+  const updateSmsConsent = async (consent: boolean) => {
+    if (!user) return;
+    await supabase.from("profiles").update({ sms_consent: consent }).eq("id", user.id);
+    setProfile((prev) => prev ? { ...prev, sms_consent: consent } : prev);
+  };
+
   return (
     <AuthContext.Provider value={{
       user, profile, loading,
       isSuperAdmin: profile?.role === "super_admin",
-      signIn, signOut,
+      signIn, signOut, updateSmsConsent,
     }}>
       {children}
     </AuthContext.Provider>

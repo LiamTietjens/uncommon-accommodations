@@ -134,7 +134,7 @@ const TOOLS: Anthropic.Tool[] = [
 async function subWorkflowA(
   query: string,
   ctx: AgentContext
-): Promise<string | null> {
+): Promise<{ answer: string; requiresMaintenance: boolean } | null> {
   const supabase = getSupabaseClient();
 
   // A1: Load KB entries for this property
@@ -209,12 +209,18 @@ ${kbText}
    - Do NOT try to be helpful by providing an approximate or partial answer.
    - Do NOT answer based on the conversation history or property name.
    - Your response MUST start with exactly: NO_ANSWER_FOUND
-   - Add a brief reason on the next line explaining what info was missing.
+   - On the next line, output REQUIRES_MAINTENANCE: true OR REQUIRES_MAINTENANCE: false
+     - true = the guest is describing physical damage, breakage, leaking, flooding, wobbling, malfunctioning appliances, or anything that clearly needs a repair person or on-site fix.
+     - false = the guest is asking an informational question the KB should have covered (directions, policies, recommendations, etc.).
+   - On the next line, add a brief reason explaining what info was missing.
 
 # Output format
 ONLY two possible outputs:
 A) A guest-facing reply using ONLY knowledge base content, OR
-B) NO_ANSWER_FOUND on the first line, reason on the second line.
+B) All three lines in this exact order:
+   NO_ANSWER_FOUND
+   REQUIRES_MAINTENANCE: true/false
+   Reason: brief explanation of what was missing
 There is NO other valid output. When in doubt, ALWAYS choose B.
 
 # FINAL REMINDER
@@ -228,11 +234,12 @@ The knowledge base above is your ONLY source of truth. You have ZERO information
   // A3: Check if answer was found (trim whitespace, case-insensitive check)
   const trimmed = answer.trim();
   if (trimmed.toUpperCase().startsWith("NO_ANSWER_FOUND") || trimmed === "") {
-    logger.info("KB Answerer returned NO_ANSWER_FOUND — escalating");
-    return null; // Triggers Sub-Workflow D
+    const requiresMaintenance = /REQUIRES_MAINTENANCE:\s*true/i.test(trimmed);
+    logger.info("KB Answerer returned NO_ANSWER_FOUND", { requiresMaintenance });
+    return { answer: "", requiresMaintenance };
   }
 
-  return answer;
+  return { answer, requiresMaintenance: false };
 }
 
 // ─── Sub-Workflow B: Maintenance Ticket ──────────────────────────────
@@ -869,9 +876,9 @@ what you're doing. Only write what you'd want the guest to see.
 
         switch (toolName) {
           case "use_knowledge_base": {
-            const answer = await subWorkflowA(toolInput.query, agentCtx);
-            if (answer === null) {
-              // KB had no answer → HARD STOP, escalate to human immediately
+            const result = await subWorkflowA(toolInput.query, agentCtx);
+            if (result === null) {
+              // No KB entries at all → hard stop
               await supabase.from("agent_activity_log").insert({
                 property_id: agentCtx.propertyId,
                 reservation_uuid: agentCtx.reservationUuid,
@@ -880,12 +887,28 @@ what you're doing. Only write what you'd want the guest to see.
               await subWorkflowD("Knowledge base had no answer", bundledMessage, agentCtx);
               return { status: "escalated", reason: "kb_no_answer" };
             }
-            await supabase.from("agent_activity_log").insert({
-              property_id: agentCtx.propertyId,
-              reservation_uuid: agentCtx.reservationUuid,
-              action_type: "kb_answer",
-            });
-            toolResult = answer;
+            if (result.answer === "") {
+              if (result.requiresMaintenance) {
+                // KB had no answer but it's a maintenance issue → return to coordinator
+                toolResult = "NO_ANSWER_FOUND — No troubleshooting info in the knowledge base for this issue. This appears to require maintenance.";
+              } else {
+                // Genuine KB gap → hard stop
+                await supabase.from("agent_activity_log").insert({
+                  property_id: agentCtx.propertyId,
+                  reservation_uuid: agentCtx.reservationUuid,
+                  action_type: "escalation",
+                });
+                await subWorkflowD("Knowledge base had no answer", bundledMessage, agentCtx);
+                return { status: "escalated", reason: "kb_no_answer" };
+              }
+            } else {
+              await supabase.from("agent_activity_log").insert({
+                property_id: agentCtx.propertyId,
+                reservation_uuid: agentCtx.reservationUuid,
+                action_type: "kb_answer",
+              });
+              toolResult = result.answer;
+            }
             break;
           }
 

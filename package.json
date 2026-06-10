@@ -11,11 +11,11 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
     "@supabase/supabase-js": "^2.105.0",
-    "@trigger.dev/sdk": "^4.4.4",
+    "@trigger.dev/sdk": "^4.4.6",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@trigger.dev/build": "^4.4.4",
+    "@trigger.dev/build": "^4.4.6",
     "dotenv": "^17.4.2",
     "trigger.dev": "^4.4.4",
     "tsx": "^4.21.0",

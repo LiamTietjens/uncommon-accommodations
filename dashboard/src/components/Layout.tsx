@@ -17,7 +17,8 @@ const adminNav = [
 ];
 
 export default function Layout() {
-  const { user, profile, loading, isSuperAdmin, signOut } = useAuth();
+  const { user, profile, loading, isSuperAdmin, signOut, updateSmsConsent } = useAuth();
+  const hasConsented = profile?.sms_consent ?? false;
   const canViewKB = isSuperAdmin || (profile?.can_view_kb ?? false);
   const canViewMaintenance = isSuperAdmin || (profile?.can_view_maintenance ?? false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -78,6 +79,21 @@ export default function Layout() {
           )}
         </nav>
 
+        {!hasConsented && (
+          <div className="border-t border-gray-100 p-5 bg-amber-50">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-gray-300 accent-gray-900"
+                onChange={() => updateSmsConsent(true)}
+              />
+              <span className="text-sm text-gray-700 leading-snug">
+                I agree to receive SMS notifications about unanswered guest questions, check-in, or maintenance.
+              </span>
+            </label>
+          </div>
+        )}
+
         <div className="border-t border-gray-100 p-5">
           <div className="text-base text-gray-500 truncate">{profile?.email}</div>
           <div className="text-sm text-gray-400">{profile?.role === "super_admin" ? "Admin" : "Member"}</div>
@@ -96,7 +112,16 @@ export default function Layout() {
       </button>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto relative">
+        {!hasConsented && (
+          <div className="absolute inset-0 z-20 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+            <div className="text-center max-w-sm px-6">
+              <Bell size={40} className="mx-auto mb-4 text-gray-400" />
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">SMS consent required</h2>
+              <p className="text-sm text-gray-500">Please accept SMS notifications in the sidebar before using the dashboard.</p>
+            </div>
+          </div>
+        )}
         <Outlet />
       </main>
 
