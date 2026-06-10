@@ -15,6 +15,11 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/screenshot" element={
+            <div style={{ background: "#f9fafb", display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", padding: "2rem" }}>
+              <img src="/screenshot/preview.png" alt="Uncommon Accommodations Dashboard" style={{ maxWidth: "100%", height: "auto", borderRadius: 12, boxShadow: "0 4px 24px rgba(0,0,0,0.1)" }} />
+            </div>
+          } />
           <Route element={<Layout />}>
             <Route index element={<Overview />} />
             <Route path="properties" element={<PropertiesKB />} />
