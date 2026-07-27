@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
-import { RefreshCw, Trash2, X, Plus, HelpCircle, Link, Pencil, Check, Copy, ArrowRight } from "lucide-react";
+import { RefreshCw, Trash2, X, Plus, HelpCircle, Link, Copy, ArrowRight, AlertTriangle } from "lucide-react";
 
 interface Property {
   id: string;
@@ -10,6 +10,11 @@ interface Property {
   turno_property_id: string | null;
   turno_alias: string | null;
   is_active: boolean;
+}
+
+interface TurnoProperty {
+  id: string;
+  alias: string;
 }
 
 interface KBEntry {
@@ -60,6 +65,7 @@ const parseUrls = (e: KBEntry): string[] => {
 export default function PropertiesKB() {
   const { isSuperAdmin } = useAuth();
   const [properties, setProperties] = useState<Property[]>([]);
+  const [turnoProperties, setTurnoProperties] = useState<TurnoProperty[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
@@ -90,6 +96,12 @@ export default function PropertiesKB() {
     });
   };
 
+  const loadTurnoProperties = () => {
+    supabase.from("turno_properties").select("id, alias").order("alias").then(({ data }) => {
+      setTurnoProperties((data as TurnoProperty[]) ?? []);
+    });
+  };
+
   const loadAllCooldowns = () => {
     supabase.from("cooldowns").select("*").eq("is_active", true)
       .gt("expires_at", new Date().toISOString())
@@ -109,7 +121,7 @@ export default function PropertiesKB() {
     });
   };
 
-  useEffect(() => { loadProperties(); loadAllCooldowns(); loadHealthCounts(); }, []);
+  useEffect(() => { loadProperties(); loadTurnoProperties(); loadAllCooldowns(); loadHealthCounts(); }, []);
 
   const loadRightPanel = () => {
     if (!selectedId) { setEntries([]); setGaps([]); setCooldowns([]); return; }
@@ -151,6 +163,7 @@ export default function PropertiesKB() {
           if (done || elapsed >= 120000) {
             clearInterval(poll);
             loadProperties();
+            loadTurnoProperties();
             loadAllCooldowns();
             loadHealthCounts();
             setSyncing(false);
@@ -249,6 +262,7 @@ export default function PropertiesKB() {
   };
 
   const selected = properties.find((p) => p.id === selectedId);
+  const unmappedCount = properties.filter((p) => p.is_active && !p.turno_property_id).length;
   const isPaused = selectedId ? hasCooldown(selectedId) : false;
   const selectedHealth = selectedId ? healthPercent(kbCounts[selectedId] || 0, gapCounts[selectedId] || 0) : null;
   const latestExpiry = cooldowns.length > 0
@@ -274,6 +288,12 @@ export default function PropertiesKB() {
             {syncMsg}
           </div>
         )}
+        {isSuperAdmin && unmappedCount > 0 && (
+          <div className="px-4 py-2 text-xs font-medium text-red-700 bg-red-50 border-b border-red-100 flex items-center gap-1.5">
+            <AlertTriangle size={13} className="shrink-0" />
+            {unmappedCount} {unmappedCount === 1 ? "property needs" : "properties need"} a Turno link
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           {properties.map((p) => {
             const paused = hasCooldown(p.id);
@@ -287,7 +307,12 @@ export default function PropertiesKB() {
                 }`}
               >
                 <div className="min-w-0">
-                  <div className={`text-base font-medium truncate ${selectedId === p.id ? "text-gray-900" : "text-gray-700"}`}>{p.name}</div>
+                  <div className={`text-base font-medium truncate flex items-center gap-1.5 ${selectedId === p.id ? "text-gray-900" : "text-gray-700"}`}>
+                    {isSuperAdmin && !p.turno_property_id && (
+                      <span className="shrink-0 w-2 h-2 rounded-full bg-red-500" title="Not linked to Turno" />
+                    )}
+                    <span className="truncate">{p.name}</span>
+                  </div>
                   {pct !== null && (
                     <div className={`text-xs ${healthColor(pct)}`}>KB {pct}%</div>
                   )}
@@ -323,9 +348,16 @@ export default function PropertiesKB() {
                   {selected.turno_property_id && <span>Turno: {selected.turno_property_id}</span>}
                 </div>
                 {isSuperAdmin && (
-                  <TurnoAliasField property={selected} onSave={(alias) => {
-                    setProperties(properties.map((p) => p.id === selected.id ? { ...p, turno_alias: alias } : p));
-                  }} />
+                  <TurnoMappingField
+                    property={selected}
+                    turnoProperties={turnoProperties}
+                    allProperties={properties}
+                    onSave={(turnoId, alias) => {
+                      setProperties(properties.map((p) =>
+                        p.id === selected.id ? { ...p, turno_property_id: turnoId, turno_alias: alias } : p
+                      ));
+                    }}
+                  />
                 )}
                 {selectedHealth !== null && (
                   <div className="flex items-center gap-2 mt-2">
@@ -514,37 +546,108 @@ export default function PropertiesKB() {
   );
 }
 
-function TurnoAliasField({ property, onSave }: { property: Property; onSave: (alias: string | null) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(property.turno_alias || "");
+// Turno mapping is chosen explicitly here rather than guessed by the sync workflow.
+// Name-similarity matching used to bind "Unit 1" to "Unit 2" without anyone noticing,
+// which silently routes a guest's extra request to the wrong unit's cleaner.
+function TurnoMappingField({ property, turnoProperties, allProperties, onSave }: {
+  property: Property;
+  turnoProperties: TurnoProperty[];
+  allProperties: Property[];
+  onSave: (turnoId: string | null, alias: string | null) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { setValue(property.turno_alias || ""); }, [property.turno_alias]);
+  // Which Turno properties are already spoken for, and by whom
+  const claimedBy = new Map<string, string>();
+  for (const p of allProperties) {
+    if (p.turno_property_id && p.id !== property.id) claimedBy.set(p.turno_property_id, p.name);
+  }
 
-  const save = async () => {
-    const alias = value.trim() || null;
-    await supabase.from("properties").update({ turno_alias: alias }).eq("id", property.id);
-    onSave(alias);
-    setEditing(false);
+  const apply = async (turnoId: string | null) => {
+    const target = turnoId ? turnoProperties.find((t) => t.id === turnoId) : null;
+    if (turnoId && !target) return;
+
+    // Re-pointing an existing link changes where real cleaning tasks land, so confirm it
+    if (property.turno_property_id && property.turno_property_id !== turnoId) {
+      const to = target ? `"${target.alias}"` : "nothing (unlinked)";
+      if (!confirm(`Change the Turno link for ${property.name} to ${to}?\n\nFuture guest extra requests will be sent there.`)) return;
+    }
+    const stealingFrom = turnoId ? claimedBy.get(turnoId) : undefined;
+    if (stealingFrom && !confirm(`"${target!.alias}" is already linked to ${stealingFrom}.\n\nMove it to ${property.name}? ${stealingFrom} will be left unlinked.`)) return;
+
+    setSaving(true);
+    setError(null);
+
+    // Clear the previous holder first so two properties can't point at one Turno property
+    if (stealingFrom) {
+      const prev = allProperties.find((p) => p.turno_property_id === turnoId && p.id !== property.id);
+      if (prev) {
+        await supabase.from("properties").update({ turno_property_id: null, turno_alias: null }).eq("id", prev.id);
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from("properties")
+      .update({ turno_property_id: turnoId, turno_alias: target?.alias ?? null })
+      .eq("id", property.id);
+
+    setSaving(false);
+    if (updateError) { setError(updateError.message); return; }
+    onSave(turnoId, target?.alias ?? null);
   };
 
+  const isMapped = !!property.turno_property_id;
+
   return (
-    <div className="flex items-center gap-2 mt-1.5 text-sm">
-      <span className="text-gray-400">Turno Alias:</span>
-      {editing ? (
-        <div className="flex items-center gap-1.5">
-          <input value={value} onChange={(e) => setValue(e.target.value)} autoFocus
-            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setEditing(false); setValue(property.turno_alias || ""); } }}
-            className="px-2 py-0.5 text-sm border border-gray-300 rounded w-48" placeholder="Property name in Turno" />
-          <button onClick={save} className="text-green-600 hover:text-green-800"><Check size={14} /></button>
-          <button onClick={() => { setEditing(false); setValue(property.turno_alias || ""); }} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
-        </div>
-      ) : (
-        <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700">
-          {property.turno_alias || <span className="italic text-gray-300">not set</span>}
-          <Pencil size={12} />
-        </button>
+    <div className={`mt-2 rounded-lg border px-3 py-2.5 ${isMapped ? "border-gray-200 bg-gray-50" : "border-red-300 bg-red-50"}`}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        {isMapped ? (
+          <>
+            <Link size={13} className="text-gray-500 shrink-0" />
+            <span className="text-sm font-medium text-gray-700">Turno link</span>
+          </>
+        ) : (
+          <>
+            <AlertTriangle size={13} className="text-red-600 shrink-0" />
+            <span className="text-sm font-semibold text-red-700">Not fully onboarded</span>
+          </>
+        )}
+      </div>
+
+      {!isMapped && (
+        <p className="text-xs text-red-700 mb-2">
+          This property isn't linked to Turno yet, so guest extra requests won't reach a cleaner.
+          Pick its Turno property below.
+        </p>
       )}
-      {!editing && <span className="text-xs text-gray-300">Set to match the property name in Turno</span>}
+
+      <select
+        value={property.turno_property_id ?? ""}
+        disabled={saving || turnoProperties.length === 0}
+        onChange={(e) => apply(e.target.value || null)}
+        className={`w-full max-w-md px-2 py-1.5 text-sm rounded border bg-white disabled:opacity-50 ${
+          isMapped ? "border-gray-300" : "border-red-400"
+        }`}
+      >
+        <option value="">— Not linked —</option>
+        {turnoProperties.map((t) => {
+          const owner = claimedBy.get(t.id);
+          return (
+            <option key={t.id} value={t.id}>
+              {t.alias}{owner ? `  (linked to ${owner})` : ""}
+            </option>
+          );
+        })}
+      </select>
+
+      {turnoProperties.length === 0 && (
+        <p className="text-xs text-gray-500 mt-1.5">
+          No Turno properties cached yet — run a sync to load the list.
+        </p>
+      )}
+      {saving && <p className="text-xs text-gray-500 mt-1.5">Saving...</p>}
+      {error && <p className="text-xs text-red-600 mt-1.5">{error}</p>}
     </div>
   );
 }

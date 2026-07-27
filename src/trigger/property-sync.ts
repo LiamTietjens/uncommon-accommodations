@@ -1,7 +1,6 @@
 import { task, logger } from "@trigger.dev/sdk";
 import { getSupabaseClient } from "../lib/supabase.js";
 import { listProperties as listTurnoProperties } from "../lib/turno.js";
-import { diceCoefficient } from "../lib/similarity.js";
 
 const HOSPITABLE_BASE = "https://public.api.hospitable.com/v2";
 
@@ -33,7 +32,7 @@ export const propertySyncWorkflow = task({
     const supabase = getSupabaseClient();
     let hospitableAdded = 0;
     let hospitableUpdated = 0;
-    let turnoMapped = 0;
+    let turnoCached = 0;
 
     // ── Step 2: Fetch all properties from Hospitable ─────────────
 
@@ -110,60 +109,47 @@ export const propertySyncWorkflow = task({
       logger.warn("Turno fetch failed — skipping Turno mapping", { error: String(e) });
     }
 
-    // ── Step 5: Match Turno properties to Supabase (alias priority, then fuzzy) ─
+    // ── Step 5: Cache the Turno list for the dashboard's mapping dropdown ─
+    //
+    // Deliberately does NOT auto-match. Name-similarity matching was removed because
+    // "Unit 1" and "Unit 2" score 0.8 on Dice — well above the old 0.7 threshold — so a
+    // property without an exact counterpart could silently bind to the wrong unit and
+    // route guest extras to another unit's cleaner. Even exact-name matching is unsafe
+    // once two properties share a name across buildings, or Turno holds duplicate
+    // aliases. Mapping is now an explicit human choice in the dashboard.
 
     if (allTurnoProperties.length > 0) {
-      const { data: supabaseProperties } = await supabase
-        .from("properties")
-        .select("id, name, turno_property_id, turno_alias")
-        .eq("is_active", true);
+      const { error: turnoUpsertError } = await supabase.from("turno_properties").upsert(
+        allTurnoProperties.map((tp) => ({
+          id: String(tp.id),
+          alias: tp.alias,
+          synced_at: new Date().toISOString(),
+        })),
+        { onConflict: "id" }
+      );
 
-      const spList = supabaseProperties || [];
-
-      for (const tp of allTurnoProperties) {
-        // 1. Exact match on turno_alias (manual override takes priority)
-        let match = spList.find(
-          (sp) =>
-            sp.turno_alias &&
-            sp.turno_alias.toLowerCase().trim() === tp.alias.toLowerCase().trim() &&
-            !sp.turno_property_id
-        );
-
-        // 2. Fuzzy match on property name using Dice coefficient
-        if (!match) {
-          let bestScore = 0;
-          let bestCandidate: (typeof spList)[number] | null = null;
-          for (const sp of spList) {
-            if (sp.turno_property_id) continue; // already mapped
-            const score = diceCoefficient(sp.name, tp.alias);
-            if (score >= 0.7 && score > bestScore) {
-              bestScore = score;
-              bestCandidate = sp;
-            }
-          }
-          if (bestCandidate) {
-            match = bestCandidate;
-            logger.info("Turno fuzzy match", { turnoAlias: tp.alias, propertyName: match.name, score: bestScore });
-          }
-        }
-
-        if (match) {
-          await supabase
-            .from("properties")
-            .update({ turno_property_id: String(tp.id), turno_alias: tp.alias })
-            .eq("id", match.id);
-          turnoMapped++;
-          logger.info("Turno property mapped", { name: tp.alias, turnoId: tp.id });
-        }
+      if (turnoUpsertError) {
+        logger.error("Failed to cache Turno properties", { error: turnoUpsertError.message });
+      } else {
+        turnoCached = allTurnoProperties.length;
+        logger.info(`Cached ${turnoCached} Turno properties for manual mapping`);
       }
     }
+
+    // Surface how many properties still need a human to pick their Turno counterpart
+    const { count: unmappedCount } = await supabase
+      .from("properties")
+      .select("id", { count: "exact", head: true })
+      .eq("is_active", true)
+      .is("turno_property_id", null);
 
     const result = {
       hospitable_properties_found: allHospitableProperties.length,
       added: hospitableAdded,
       updated: hospitableUpdated,
       turno_properties_found: allTurnoProperties.length,
-      turno_mapped: turnoMapped,
+      turno_properties_cached: turnoCached,
+      properties_awaiting_mapping: unmappedCount ?? 0,
     };
 
     logger.info("Property sync complete", result);
