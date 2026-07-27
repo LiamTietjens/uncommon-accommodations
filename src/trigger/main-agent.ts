@@ -1,7 +1,7 @@
 import { task, logger, wait } from "@trigger.dev/sdk";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSupabaseClient } from "../lib/supabase.js";
-import { getReservation, getReservationMessages, sendMessage, extractReservationDates } from "../lib/hospitable.js";
+import { getReservation, getReservationMessages, sendMessage, extractReservationDates, formatCheckInDate } from "../lib/hospitable.js";
 import { createProject, getLocalHour } from "../lib/turno.js";
 import { sendSms } from "../lib/sms.js";
 
@@ -35,9 +35,43 @@ interface AgentContext {
   reservationUuid: string;
   conversationHistory: { role: string; content: string }[];
   latestMessage: string;
-  guestName: string;
+  guestName: string; // first name only — feeds the guest-facing prompt, don't widen
+  guestFullName: string; // "First Last" — staff SMS only
+  checkInDate: string | null; // raw YYYY-MM-DD, property-local
   turnoPropertyId: string | null;
   timezone: string;
+}
+
+// ─── Staff SMS helpers ───────────────────────────────────────────────
+
+// Trailer appended to every staff-facing SMS. Pure string ops — never throws.
+// All date handling stays in formatCheckInDate so the timezone rules live in one place.
+function guestInfoBlock(ctx: AgentContext): string {
+  return [
+    `Guest: ${ctx.guestFullName}`,
+    `Unit: ${ctx.propertyName}`,
+    `Check-in: ${formatCheckInDate(ctx.checkInDate) ?? "unknown"}`,
+  ].join("\n");
+}
+
+// Single send path for staff alerts, so the guest info block can't be forgotten.
+async function notifyRecipients(
+  recipients: { name?: string; phone: string }[] | null,
+  body: string,
+  ctx: AgentContext
+): Promise<number> {
+  if (!recipients?.length) return 0;
+  const message = `${body}\n\n${guestInfoBlock(ctx)}`;
+  let sent = 0;
+  for (const r of recipients) {
+    try {
+      await sendSms(r.phone, message);
+      sent++;
+    } catch (e) {
+      logger.error("SMS send failed", { recipient: r.name, error: String(e) });
+    }
+  }
+  return sent;
 }
 
 // ─── Tool Definitions for Claude ────────────────────────────────────
@@ -320,18 +354,8 @@ Respond with ONLY the urgency level name (e.g. "high"). No explanation, no other
     .eq(urgencyColumn, true)
     .eq("is_active", true);
 
-  let smsSent = 0;
-  if (recipients && recipients.length > 0) {
-    const smsBody = `🔧 Maintenance [${urgency.toUpperCase()}]\n\n${ctx.propertyName}\n\n${issueDescription}`;
-    for (const r of recipients) {
-      try {
-        await sendSms(r.phone, smsBody);
-        smsSent++;
-      } catch (e) {
-        logger.error("SMS send failed", { recipient: r.name, error: String(e) });
-      }
-    }
-  }
+  const smsBody = `🔧 Maintenance [${urgency.toUpperCase()}]\n\n${issueDescription}`;
+  const smsSent = await notifyRecipients(recipients, smsBody, ctx);
 
   // B5: Return result to agent
   return `Maintenance ticket created. Urgency: ${urgency}. SMS sent to ${smsSent} recipient(s).`;
@@ -400,18 +424,13 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
   let scheduledEndTime: string | undefined;
   let deliveryEstimate = local.hour < 15 ? "today by the end of the day" : "tomorrow by 3pm";
 
-  try {
-    const resData = await getReservation(ctx.reservationUuid);
-    const { checkIn } = extractReservationDates(resData);
-    const checkInDate = checkIn?.split(" ")[0]?.split("T")[0]; // extract YYYY-MM-DD
-    if (checkInDate && checkInDate > todayStr) {
-      scheduledBeginTime = `${checkInDate} 10:00:00`;
-      scheduledEndTime = `${checkInDate} 23:59:00`;
-      deliveryEstimate = "on your arrival day";
-      logger.info("Extra request scheduled for check-in day", { checkIn, todayStr });
-    }
-  } catch (e) {
-    logger.warn("Failed to fetch reservation dates — using immediate scheduling", { error: String(e) });
+  // checkInDate is resolved once in Phase 1; null here means the lookup failed,
+  // which falls through to immediate scheduling exactly as before.
+  if (ctx.checkInDate && ctx.checkInDate > todayStr) {
+    scheduledBeginTime = `${ctx.checkInDate} 10:00:00`;
+    scheduledEndTime = `${ctx.checkInDate} 23:59:00`;
+    deliveryEstimate = "on your arrival day";
+    logger.info("Extra request scheduled for check-in day", { checkIn: ctx.checkInDate, todayStr });
   }
 
   if (ctx.turnoPropertyId) {
@@ -502,16 +521,8 @@ async function subWorkflowD(
     .eq("receives_kb_gaps", true)
     .eq("is_active", true);
 
-  if (recipients && recipients.length > 0) {
-    const smsBody = `⚠️ AI Escalated\n\n${ctx.propertyName}\n\n"${guestQuestion}"\n\nCooldown active. Please review all recent guest messages and respond manually.`;
-    for (const r of recipients) {
-      try {
-        await sendSms(r.phone, smsBody);
-      } catch (e) {
-        logger.error("SMS send failed", { recipient: r.name, error: String(e) });
-      }
-    }
-  }
+  const smsBody = `⚠️ AI Escalated\n\n"${guestQuestion}"\n\nCooldown active. Please review all recent guest messages and respond manually.`;
+  await notifyRecipients(recipients, smsBody, ctx);
 
   logger.warn("Sub-Workflow D: HARD STOP — no reply to guest", {
     propertyId: ctx.propertyId,
@@ -538,20 +549,10 @@ async function subWorkflowE(
     .eq("is_active", true);
 
   // E2: Send SMS to each recipient
-  let smsSent = 0;
-  if (recipients && recipients.length > 0) {
-    const typeLabel = requestType === "early_checkin" ? "Early check-in" : "Late checkout";
-    const timeNote = requestedTime ? ` (requested: ${requestedTime})` : "";
-    const smsBody = `🕐 ${typeLabel} Request${timeNote}\n\n${ctx.propertyName}\n\nGuest: ${ctx.guestName}\n\nPlease confirm availability.`;
-    for (const r of recipients) {
-      try {
-        await sendSms(r.phone, smsBody);
-        smsSent++;
-      } catch (e) {
-        logger.error("SMS send failed", { recipient: r.name, error: String(e) });
-      }
-    }
-  }
+  const typeLabel = requestType === "early_checkin" ? "Early check-in" : "Late checkout";
+  const timeNote = requestedTime ? ` (requested: ${requestedTime})` : "";
+  const smsBody = `🕐 ${typeLabel} Request${timeNote}\n\nPlease confirm availability.`;
+  const smsSent = await notifyRecipients(recipients, smsBody, ctx);
 
   logger.info("Check-in/checkout request processed", {
     requestType,
@@ -632,22 +633,19 @@ export const mainAgentWorkflow = task({
       return { status: "error", reason: "no_message_body" };
     }
 
-    // Step 2: Get property UUID (prefer webhook payload, fallback to reservation API)
-    let propertyUuid: string | undefined = webhookPropertyUuid;
-    let reservationData: any;
+    // Step 2: Fetch the reservation once — supplies the guest identity and check-in
+    // date for staff SMS, plus a property UUID fallback. Best-effort: a failure here
+    // must never stop an alert going out.
+    let reservationData: any = null;
+    try {
+      reservationData = await getReservation(reservationUuid);
+    } catch (e) {
+      logger.error("Failed to fetch reservation from Hospitable", { error: String(e) });
+    }
 
-    if (!propertyUuid) {
-      try {
-        reservationData = await getReservation(reservationUuid);
-        const included = reservationData?.included || [];
-        const propertyData = included.find((i: any) => i.type === "property" || i.type === "properties");
-        propertyUuid = propertyData?.id || reservationData?.data?.relationships?.properties?.data?.[0]?.id;
-        if (!propertyUuid) {
-          propertyUuid = reservationData?.data?.property_uuid || reservationData?.data?.property_id;
-        }
-      } catch (e) {
-        logger.error("Failed to fetch reservation from Hospitable", { error: String(e) });
-      }
+    let propertyUuid: string | undefined = webhookPropertyUuid;
+    if (!propertyUuid && reservationData) {
+      propertyUuid = reservationData?.data?.properties?.[0]?.id;
     }
 
     if (!propertyUuid) {
@@ -703,6 +701,17 @@ export const mainAgentWorkflow = task({
       conversationHistory = [{ role: "guest", content: messageBody }];
     }
 
+    // Guest identity + check-in date for staff SMS. The webhook only carries a first
+    // name and no dates, so these come from the reservation — falling back to whatever
+    // the webhook gave us if that fetch failed.
+    const guestData = reservationData?.data?.guest ?? null;
+    const guestFullName =
+      [guestData?.first_name, guestData?.last_name].filter(Boolean).join(" ") ||
+      (webhookData as any)?.sender?.full_name ||
+      guestName;
+    const { checkIn } = extractReservationDates(reservationData);
+    const checkInDate = checkIn?.split(" ")[0]?.split("T")[0] ?? null;
+
     // Build agent context (latestMessage updated after bundling below)
     const agentCtx: AgentContext = {
       propertyId: property.id,
@@ -711,6 +720,8 @@ export const mainAgentWorkflow = task({
       conversationHistory,
       latestMessage: messageBody, // will be overwritten with bundledMessage
       guestName,
+      guestFullName,
+      checkInDate,
       turnoPropertyId: property.turno_property_id,
       timezone: property.timezone || "America/New_York",
     };
