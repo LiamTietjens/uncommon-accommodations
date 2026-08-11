@@ -59,6 +59,8 @@ export async function createProject(params: {
   timezone: string;
   scheduledBeginTime?: string;
   scheduledEndTime?: string;
+  /** Test mode flags the task for cleaners so they know to ignore it. */
+  testMode?: boolean;
 }) {
   const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -99,7 +101,9 @@ export async function createProject(params: {
     headers: getHeaders(),
     body: JSON.stringify({
       property_id: params.propertyId,
-      cleaner_description: params.cleanerDescription + "\n\nIGNORE THIS IS A TEST",
+      cleaner_description: params.testMode
+        ? params.cleanerDescription + "\n\nIGNORE THIS IS A TEST"
+        : params.cleanerDescription,
       begin_time: beginTime,
       end_time: endTime,
       project_type_id: 3,

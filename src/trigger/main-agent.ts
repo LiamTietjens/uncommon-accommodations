@@ -4,6 +4,7 @@ import { getSupabaseClient } from "../lib/supabase.js";
 import { getReservation, getReservationMessages, sendMessage, extractReservationDates, formatCheckInDate } from "../lib/hospitable.js";
 import { createProject, getLocalHour } from "../lib/turno.js";
 import { sendSms } from "../lib/sms.js";
+import { getAgentMode } from "../lib/settings.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ interface AgentContext {
   checkInDate: string | null; // raw YYYY-MM-DD, property-local
   turnoPropertyId: string | null;
   timezone: string;
+  testMode: boolean; // tags Turno tasks as test runs — see subWorkflowC
 }
 
 // ─── Staff SMS helpers ───────────────────────────────────────────────
@@ -442,6 +444,7 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
         timezone: ctx.timezone,
         scheduledBeginTime,
         scheduledEndTime,
+        testMode: ctx.testMode,
       });
       turnoProjectId = String(turnoResult?.data?.id || null);
       logger.info("Turno project created", { turnoProjectId });
@@ -613,13 +616,14 @@ export const mainAgentWorkflow = task({
       }
     }
 
-    // --- TESTING FILTER: only process allowed reservations ---
-    const ALLOWED_RESERVATION_UUIDS = [
-      "42ea05f3-41a4-4a8e-833d-3e7b974bb526",
-      "bad04914-eaa3-48f8-9c50-8b1b5722f117", // Tyler Wren — Unit 2, Oct 27-29
-    ];
-    if (!ALLOWED_RESERVATION_UUIDS.includes(reservationUuid)) {
-      logger.info(`Skipping reservation ${reservationUuid} — not in test allowlist`);
+    // --- Live/test mode (toggled from the dashboard, read fresh each run) ---
+    // Test mode: only the allowlisted reservations are answered.
+    // Live mode:  no reservation filter at all.
+    const agentMode = await getAgentMode();
+    logger.info("Agent mode", { mode: agentMode.mode });
+
+    if (agentMode.mode === "test" && !agentMode.testReservationUuids.includes(reservationUuid)) {
+      logger.info(`Skipping reservation ${reservationUuid} — test mode, not in allowlist`);
       return { status: "skipped", reason: "reservation not in test allowlist" };
     }
 
@@ -724,6 +728,7 @@ export const mainAgentWorkflow = task({
       checkInDate,
       turnoPropertyId: property.turno_property_id,
       timezone: property.timezone || "America/New_York",
+      testMode: agentMode.mode === "test",
     };
 
     // ── Phase 2: Agent Loop ─────────────────────────────────────────

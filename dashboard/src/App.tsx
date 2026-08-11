@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
+import { AgentModeProvider } from "./lib/agentMode";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Overview from "./pages/Overview";
@@ -20,7 +21,7 @@ export default function App() {
               <img src="/screenshot/preview.png" alt="Uncommon Accommodations Dashboard" style={{ maxWidth: "100%", height: "auto", borderRadius: 12, boxShadow: "0 4px 24px rgba(0,0,0,0.1)" }} />
             </div>
           } />
-          <Route element={<Layout />}>
+          <Route element={<AgentModeProvider><Layout /></AgentModeProvider>}>
             <Route index element={<Overview />} />
             <Route path="properties" element={<PropertiesKB />} />
             <Route path="tickets" element={<Tickets />} />

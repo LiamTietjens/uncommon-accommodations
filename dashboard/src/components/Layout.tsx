@@ -1,8 +1,9 @@
 import { NavLink, Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { useAgentMode } from "../lib/agentMode";
 import {
   Home, Building2, Wrench, Settings, Users, Bell,
-  LogOut, Menu, X
+  LogOut, Menu, X, FlaskConical, Radio
 } from "lucide-react";
 import { useState } from "react";
 
@@ -18,6 +19,7 @@ const adminNav = [
 
 export default function Layout() {
   const { user, profile, loading, isSuperAdmin, signOut, updateSmsConsent } = useAuth();
+  const { mode, loading: modeLoading } = useAgentMode();
   const hasConsented = profile?.sms_consent ?? false;
   const canViewKB = isSuperAdmin || (profile?.can_view_kb ?? false);
   const canViewMaintenance = isSuperAdmin || (profile?.can_view_maintenance ?? false);
@@ -30,8 +32,23 @@ export default function Layout() {
     <div className="flex h-screen">
       {/* Sidebar */}
       <aside className={`${menuOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 fixed md:static z-40 w-72 h-full bg-white border-r border-gray-200 flex flex-col transition-transform`}>
-        <div className="px-5 py-5 border-b border-gray-100">
+        <div className="px-5 py-5 border-b border-gray-100 flex items-center justify-between gap-3">
           <img src="/logo.png" alt="Uncommon Accommodations" className="h-10" />
+          {!modeLoading && (
+            <NavLink
+              to="/"
+              onClick={() => setMenuOpen(false)}
+              title={mode === "live" ? "Agent is live to all guests" : "Agent only replies to test reservations"}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full tracking-wide shrink-0 ${
+                mode === "live"
+                  ? "bg-green-100 text-green-700 hover:bg-green-200"
+                  : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+              }`}
+            >
+              {mode === "live" ? <Radio size={13} strokeWidth={2.5} /> : <FlaskConical size={13} strokeWidth={2.5} />}
+              {mode === "live" ? "LIVE" : "TEST"}
+            </NavLink>
+          )}
         </div>
 
         <nav className="flex-1 py-4 overflow-y-auto">

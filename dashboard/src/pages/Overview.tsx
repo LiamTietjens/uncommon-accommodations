@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { Building2, Wrench, Clock, AlertTriangle, Bot, MessageSquare, BedDouble, Package, ArrowUpRight } from "lucide-react";
+import AgentModeCard from "../components/AgentModeCard";
 
 const SECONDS_PER_ACTION = 70;
 
@@ -74,6 +75,9 @@ export default function Overview() {
   return (
     <div className="max-w-5xl mx-auto px-8 py-10">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Overview</h1>
+
+      <AgentModeCard />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
         {cards.map((c) => (
           <div key={c.label} className="bg-white border border-gray-200 rounded-xl p-6">
