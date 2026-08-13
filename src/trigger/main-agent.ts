@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getSupabaseClient } from "../lib/supabase.js";
 import { getReservation, getReservationMessages, sendMessage, extractReservationDates, formatCheckInDate } from "../lib/hospitable.js";
 import { createProject, getLocalHour } from "../lib/turno.js";
-import { sendSms } from "../lib/sms.js";
+import { sendSms, truncateForSms, SMS_MAX_CHARS } from "../lib/sms.js";
 import { getAgentMode } from "../lib/settings.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -63,7 +63,11 @@ async function notifyRecipients(
   ctx: AgentContext
 ): Promise<number> {
   if (!recipients?.length) return 0;
-  const message = `${body}\n\n${guestInfoBlock(ctx)}`;
+  // Fade the body to fit Telnyx's part cap while keeping the info block
+  // intact — the body budget is whatever the trailer doesn't use.
+  const info = guestInfoBlock(ctx);
+  const bodyBudget = SMS_MAX_CHARS - (info.length + 2);
+  const message = `${truncateForSms(body, bodyBudget)}\n\n${info}`;
   let sent = 0;
   for (const r of recipients) {
     try {
@@ -524,7 +528,9 @@ async function subWorkflowD(
     .eq("receives_kb_gaps", true)
     .eq("is_active", true);
 
-  const smsBody = `⚠️ AI Escalated\n\n"${guestQuestion}"\n\nCooldown active. Please review all recent guest messages and respond manually.`;
+  // Guest quote goes last: it's the only unbounded part, so if the SMS has
+  // to be faded to fit, the instruction above survives and the quote fades.
+  const smsBody = `⚠️ AI Escalated — cooldown active. Please review all recent guest messages and respond manually.\n\nGuest wrote:\n"${guestQuestion}"`;
   await notifyRecipients(recipients, smsBody, ctx);
 
   logger.warn("Sub-Workflow D: HARD STOP — no reply to guest", {
