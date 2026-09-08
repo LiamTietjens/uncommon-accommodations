@@ -21,10 +21,38 @@ export async function getReservation(uuid: string) {
   return res.json();
 }
 
+/**
+ * Thrown when Hospitable refuses a call on the per-reservation messages path.
+ *
+ * That path is capped at 2 requests per ~30s window, per reservation, and reads
+ * count against it as well as sends — measured, not documented; their docs
+ * describe the limit as applying to sending only. A guest sending two messages
+ * in quick succession is therefore enough to get the conversation-history load
+ * refused, which is exactly when we most need it.
+ *
+ * Hospitable tells us how long to wait, so callers can honour it instead of
+ * giving up. Inside a Trigger.dev task that wait is checkpointed, so it costs
+ * wall-clock only.
+ */
+export class HospitableRateLimitError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super(`Hospitable rate limited; retry after ${retryAfterSeconds}s`);
+    this.name = "HospitableRateLimitError";
+  }
+}
+
 export async function getReservationMessages(uuid: string) {
   const res = await fetch(`${BASE_URL}/reservations/${uuid}/messages`, {
     headers: getHeaders(),
+    // Matches getReservation: without it a hung connection blocks for undici's
+    // 300s default, which is the task's whole maxDuration.
+    signal: AbortSignal.timeout(10_000),
   });
+  if (res.status === 429) {
+    // Fall back to a little over one window if the header is missing or junk.
+    const raw = Number(res.headers.get("retry-after"));
+    throw new HospitableRateLimitError(Number.isFinite(raw) && raw > 0 ? raw : 31);
+  }
   if (!res.ok) throw new Error(`Hospitable GET messages failed: ${res.status} ${await res.text()}`);
   return res.json();
 }

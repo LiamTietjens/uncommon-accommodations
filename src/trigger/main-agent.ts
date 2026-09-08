@@ -1,10 +1,10 @@
-import { task, logger, wait } from "@trigger.dev/sdk";
+import { task, logger, wait, tags } from "@trigger.dev/sdk";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSupabaseClient } from "../lib/supabase.js";
-import { getReservation, getReservationMessages, sendMessage, extractReservationDates, formatCheckInDate } from "../lib/hospitable.js";
+import { getReservation, getReservationMessages, sendMessage, extractReservationDates, formatCheckInDate, HospitableRateLimitError } from "../lib/hospitable.js";
 import { createProject, getLocalHour } from "../lib/turno.js";
 import { sendSms, truncateForSms, SMS_MAX_CHARS } from "../lib/sms.js";
-import { getAgentMode } from "../lib/settings.js";
+import { getAgentMode, getV2ReservationUuids } from "../lib/settings.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ interface AgentContext {
   propertyId: string;
   propertyName: string;
   reservationUuid: string;
-  conversationHistory: { role: string; content: string }[];
+  conversationHistory: ConversationMessage[];
   latestMessage: string;
   guestName: string; // first name only — feeds the guest-facing prompt, don't widen
   guestFullName: string; // "First Last" — staff SMS only
@@ -42,6 +42,50 @@ interface AgentContext {
   turnoPropertyId: string | null;
   timezone: string;
   testMode: boolean; // tags Turno tasks as test runs — see subWorkflowC
+}
+
+interface ConversationMessage {
+  role: string;
+  content: string;
+  /** ISO timestamp from Hospitable. Undefined if the fetch failed. */
+  at?: string;
+}
+
+// ─── Conversation history ────────────────────────────────────────────
+
+// How long ago, in words. The agent cannot read an ISO date usefully but it can
+// reason about "2 minutes ago" vs "5 months ago" — and without that distinction
+// it treated a request from a previous stay as though it were still open, and
+// told a guest something was "already with the team" when nothing had been
+// raised. Relative wording also keeps the prompt stable across runs.
+function timeAgo(iso: string | undefined, now: number): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+  // floor, not round: "3 minutes ago" should mean at least 3 minutes have
+  // passed. Rounding made 30 seconds read as "1 minute ago". A negative gap
+  // (clock skew between Hospitable and us) falls through to "just now".
+  const mins = Math.floor((now - then) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 31) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const months = Math.max(1, Math.floor(days / 30));
+  return `${months} month${months === 1 ? "" : "s"} ago`;
+}
+
+// One formatter for both AI calls, so the coordinator and the KB answerer can
+// never be shown two different versions of the same conversation.
+function formatHistory(history: ConversationMessage[], now = Date.now()): string {
+  return history
+    .map((m) => {
+      const who = m.role === "guest" ? "Guest" : "Host";
+      const when = timeAgo(m.at, now);
+      return when ? `[${when}] ${who}: ${m.content}` : `${who}: ${m.content}`;
+    })
+    .join("\n");
 }
 
 // ─── Staff SMS helpers ───────────────────────────────────────────────
@@ -135,14 +179,15 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "handle_checkin_checkout",
     description:
-      "Handle a guest request for early check-in or late checkout. Use this when the guest wants to arrive earlier or leave later than the standard times.",
+      "Handle a guest arriving or leaving at a different time than standard. Covers all four cases: early check-in, late check-in, early checkout and late checkout. Use the case that actually matches the request — do not force it into the nearest one. Not for reservation DATE changes; those go to escalate_to_human.",
     input_schema: {
       type: "object" as const,
       properties: {
         request_type: {
           type: "string",
-          enum: ["early_checkin", "late_checkout"],
-          description: "Whether the guest wants early check-in or late checkout",
+          enum: ["early_checkin", "late_checkin", "early_checkout", "late_checkout"],
+          description:
+            "early_checkin = arriving before standard check-in. late_checkin = arriving after standard check-in (self-service, no coordination). early_checkout = leaving before standard checkout (no coordination). late_checkout = leaving after standard checkout.",
         },
         requested_time: {
           type: "string",
@@ -168,6 +213,35 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
 ];
+
+// The check-in tool as it was before the rework: two cases, no date awareness.
+// Everything else in TOOLS was untouched, so the legacy set is the same array
+// with this one entry swapped back — that way the other four can never drift
+// apart between the two variants.
+const LEGACY_CHECKIN_TOOL: Anthropic.Tool = {
+  name: "handle_checkin_checkout",
+  description:
+    "Handle a guest request for early check-in or late checkout. Use this when the guest wants to arrive earlier or leave later than the standard times.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      request_type: {
+        type: "string",
+        enum: ["early_checkin", "late_checkout"],
+        description: "Whether the guest wants early check-in or late checkout",
+      },
+      requested_time: {
+        type: "string",
+        description: "The specific time the guest requested, if mentioned (e.g. '1pm', '2 hours early'). Empty string if not mentioned.",
+      },
+    },
+    required: ["request_type", "requested_time"],
+  },
+};
+
+const LEGACY_TOOLS: Anthropic.Tool[] = TOOLS.map((t) =>
+  t.name === "handle_checkin_checkout" ? LEGACY_CHECKIN_TOOL : t
+);
 
 // ─── Sub-Workflow A: Knowledge Base Lookup ───────────────────────────
 
@@ -213,9 +287,7 @@ async function subWorkflowA(
   }
 
   // Format conversation history
-  const historyText = ctx.conversationHistory
-    .map((m) => `${m.role}: ${m.content}`)
-    .join("\n");
+  const historyText = formatHistory(ctx.conversationHistory);
 
   // A2: Call KB Answerer (AI Step #2)
   const anthropic = new Anthropic();
@@ -543,12 +615,59 @@ async function subWorkflowD(
 
 // ─── Sub-Workflow E: Check-In / Checkout Request ────────────────────
 
+// Whole days from today (property-local) until check-in. Negative once the stay
+// has started, which is what we want: a guest already on site is inside the window.
+// Returns null when we have no check-in date, and the caller then falls back to
+// the coordinated path rather than guessing.
+function daysUntilCheckIn(ctx: AgentContext): number | null {
+  if (!ctx.checkInDate) return null;
+  const [y, m, d] = ctx.checkInDate.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const local = getLocalHour(ctx.timezone);
+  const todayUtc = Date.UTC(local.year, local.month - 1, local.day);
+  const checkInUtc = Date.UTC(y, m - 1, d);
+  return Math.round((checkInUtc - todayUtc) / 86_400_000);
+}
+
+// Cases that need no coordination at all: check-in is self-service, and leaving
+// early needs nothing arranged. Neither should ever page the cleaners.
+const NO_COORDINATION_NEEDED: Record<string, string> = {
+  late_checkin: "late check-in",
+  early_checkout: "early checkout",
+};
+
+// Tyler's rule: availability isn't knowable until roughly a week out. Measured
+// from CHECK-IN for both early check-in and late checkout — his emails said
+// "arrival/departure", but we settled on check-in for both (3 Sep) since it is
+// simpler to explain and handles mid-stay guests without a special case.
+const COORDINATION_WINDOW_DAYS = 7;
+
 async function subWorkflowE(
   requestType: string,
   requestedTime: string,
-  ctx: AgentContext
+  ctx: AgentContext,
+  useV2: boolean
 ): Promise<string> {
   const supabase = getSupabaseClient();
+
+  // E0a: No-coordination cases — answer directly, never notify staff.
+  // v1 had neither branch: every request paged the cleaners regardless of case
+  // or how far out the stay was. Skipping both here is what keeps v1 authentic.
+  const noCoordLabel = useV2 ? NO_COORDINATION_NEEDED[requestType] : undefined;
+  if (noCoordLabel) {
+    logger.info("Check-in/checkout needs no coordination", { requestType });
+    return `No coordination needed for a ${noCoordLabel}. Check-in is self-service and leaving early needs nothing arranged, so nobody has been notified and nothing needs approving. Tell the guest that is completely fine and they can arrive or leave whenever suits them. Do NOT say you are checking with anyone.`;
+  }
+
+  // E0b: Outside the coordination window — too early to know, so don't page anyone.
+  const days = daysUntilCheckIn(ctx);
+  if (useV2 && days !== null && days > COORDINATION_WINDOW_DAYS) {
+    logger.info("Check-in/checkout request outside coordination window", {
+      requestType,
+      daysUntilCheckIn: days,
+    });
+    return `Too early to answer — check-in is ${days} days away and availability is not known until closer to the stay. Nobody has been notified and no request has been raised. Tell the guest we are happy to try to accommodate it but will not know until nearer the time, and ask them to check back about a week before check-in. Do NOT say you are checking with the cleaning team.`;
+  }
 
   // E1: Fetch SMS recipients tagged for check-in/checkout notifications
   const { data: recipients } = await supabase
@@ -572,6 +691,69 @@ async function subWorkflowE(
   return `Request forwarded to cleaning team (${smsSent} notified). Tell the guest: "Not a problem. I'm going to check with our cleaning team to see if it's possible and let you know."`;
 }
 
+// ─── Conversation loading ────────────────────────────────────────────
+
+// Hospitable caps the per-reservation messages path at 2 requests per ~30s
+// window and counts reads against it, so a guest sending two messages in a row
+// is enough to get the second run's history load refused. Three attempts covers
+// roughly two windows, which is more than a realistic burst needs; beyond that
+// Hospitable is down rather than throttling us.
+const MESSAGES_FETCH_ATTEMPTS = 3;
+
+// Newest N messages fed to the prompts. Long stays accumulate hundreds, and the
+// agent only reasons about the recent thread — the rest is prompt weight.
+const MAX_HISTORY_MESSAGES = 40;
+
+/**
+ * Loads the reservation thread, waiting out a rate limit rather than giving up.
+ *
+ * Returns null only when the conversation genuinely cannot be read. Callers must
+ * not fall back to "just the message that triggered this run": that is what made
+ * the agent answer the last of several guest messages and ignore the rest.
+ *
+ * The waits here are longer than 5s, so Trigger.dev checkpoints them and they
+ * cost wall-clock rather than compute.
+ */
+async function loadReservationThread(reservationUuid: string): Promise<any[] | null> {
+  for (let attempt = 1; attempt <= MESSAGES_FETCH_ATTEMPTS; attempt++) {
+    try {
+      const payload = await getReservationMessages(reservationUuid);
+      return payload?.data || [];
+    } catch (e) {
+      if (e instanceof HospitableRateLimitError && attempt < MESSAGES_FETCH_ATTEMPTS) {
+        logger.info("Hospitable rate limited — waiting out the window", {
+          attempt,
+          retryAfterSeconds: e.retryAfterSeconds,
+        });
+        // +1s so we resume after the window resets rather than exactly on it.
+        await wait.for({ seconds: e.retryAfterSeconds + 1 });
+        continue;
+      }
+      logger.error("Could not load conversation from Hospitable", {
+        attempt,
+        error: String(e),
+      });
+      return null;
+    }
+  }
+  return null;
+}
+
+// Oldest-first, newest MAX_HISTORY_MESSAGES kept. Anything Hospitable did not
+// send as a guest message counts as host, which is deliberate: an unknown
+// sender ends the run of unanswered guest messages rather than being folded
+// into it.
+function toConversationHistory(messages: any[]): ConversationMessage[] {
+  return [...messages]
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map((m) => ({
+      role: m.sender_type === "guest" ? "guest" : "host",
+      content: m.body || "",
+      at: m.created_at,
+    }));
+}
+
 // ─── Main Agent Workflow ─────────────────────────────────────────────
 
 export const mainAgentWorkflow = task({
@@ -586,9 +768,14 @@ export const mainAgentWorkflow = task({
     const senderType = (webhookData as any)?.sender_type;
     const reservationUuid = (webhookData as any)?.reservation_id;
     const guestName = (webhookData as any)?.sender?.first_name || "Guest";
+    // Hospitable's platform locale. Deliberately NOT fed to the prompt: guests
+    // routinely set their app to their native language and then message in
+    // English, and the locale won that fight. Language comes from the message
+    // text alone. Kept here purely as a diagnostic on the run log.
+    const guestLocale = (webhookData as any)?.sender?.locale || "unknown";
     const webhookPropertyUuid = (webhookData as any)?.property?.id;
 
-    logger.info("Webhook received", { senderType, reservationUuid, hasBody: !!messageBody });
+    logger.info("Webhook received", { senderType, reservationUuid, hasBody: !!messageBody, guestLocale });
 
     // Filter out host messages
     if (senderType === "host") {
@@ -601,7 +788,16 @@ export const mainAgentWorkflow = task({
     const messageCreatedAt = (webhookData as any)?.created_at || payload.received_at;
     await wait.for({ seconds: 30 });
 
-    if (reservationUuid) {
+    // Which agent answers this reservation? Resolved here rather than at the
+    // agent loop because v2 reads the thread once and reuses it, where v1 keeps
+    // the two separate reads it has always made. Read fresh each run, so the
+    // allowlist can change with no deploy.
+    const v2Uuids = await getV2ReservationUuids();
+    const useV2 = v2Uuids.includes(reservationUuid);
+
+    // v1 checks for a newer guest message with its own read of the thread.
+    // v2 folds that check into the single read at Step 5.
+    if (!useV2 && reservationUuid) {
       try {
         const recentMessages = await getReservationMessages(reservationUuid);
         const guestMessages = (recentMessages?.data || []).filter(
@@ -694,21 +890,53 @@ export const mainAgentWorkflow = task({
     }
 
     // Step 5: Load conversation history
-    let conversationHistory: { role: string; content: string }[] = [];
-    try {
-      const messagesData = await getReservationMessages(reservationUuid);
-      const messages = (messagesData?.data || []).sort(
-        (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    let conversationHistory: ConversationMessage[] = [];
+    if (useV2) {
+      // One read serves both the newer-message check and the history. The two
+      // separate reads this used to make were exactly the 2 requests Hospitable
+      // allows per window, so whenever a guest sent a second message the history
+      // load was refused and the agent answered that message on its own — the
+      // earlier ones were never seen, never answered, and left no trace.
+      const thread = await loadReservationThread(reservationUuid);
+
+      if (!thread) {
+        // Without the thread we cannot tell what has already been said or
+        // answered. Replying regardless is precisely the failure being fixed,
+        // so stop and leave the conversation to staff.
+        logger.error("Conversation unavailable — not replying", { reservationUuid });
+        return { status: "skipped", reason: "conversation_unavailable" };
+      }
+
+      const newerExists = thread.some(
+        (m: any) =>
+          m.sender_type === "guest" && m.created_at && m.created_at > messageCreatedAt
       );
-      conversationHistory = messages.map((m: any) => ({
-        role: m.sender_type === "guest" ? "guest" : "host",
-        content: m.body || "",
-      }));
-    } catch (e) {
-      logger.warn("Failed to fetch conversation history — continuing with latest message only", {
-        error: String(e),
-      });
-      conversationHistory = [{ role: "guest", content: messageBody }];
+      if (newerExists) {
+        logger.info("Newer guest message exists — skipping this run", {
+          reservationUuid,
+          thisMessageAt: messageCreatedAt,
+        });
+        return { status: "skipped", reason: "newer_message_exists" };
+      }
+
+      conversationHistory = toConversationHistory(thread);
+    } else {
+      try {
+        const messagesData = await getReservationMessages(reservationUuid);
+        const messages = (messagesData?.data || []).sort(
+          (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        conversationHistory = messages.map((m: any) => ({
+          role: m.sender_type === "guest" ? "guest" : "host",
+          content: m.body || "",
+          at: m.created_at,
+        }));
+      } catch (e) {
+        logger.warn("Failed to fetch conversation history — continuing with latest message only", {
+          error: String(e),
+        });
+        conversationHistory = [{ role: "guest", content: messageBody, at: messageCreatedAt }];
+      }
     }
 
     // Guest identity + check-in date for staff SMS. The webhook only carries a first
@@ -739,9 +967,7 @@ export const mainAgentWorkflow = task({
 
     // ── Phase 2: Agent Loop ─────────────────────────────────────────
 
-    const historyText = conversationHistory
-      .map((m) => `${m.role === "guest" ? "Guest" : "Host"}: ${m.content}`)
-      .join("\n");
+    const historyText = formatHistory(conversationHistory);
 
     // Bundle all unanswered guest messages into a single message
     // so the AI treats them as one cohesive request
@@ -774,6 +1000,192 @@ export const mainAgentWorkflow = task({
     ];
 
     const systemPrompt = `# You don't know anything or can't help with anything except for what's inside this prompt and the tool calls.
+
+# Role
+You are Tyler, the host of Uncommon Accommodations. You write in the first
+person, as Tyler, always. You never refer to Tyler in the third person and you
+never offer to pass something on to Tyler or "let Tyler know" — you are Tyler,
+so you handle it yourself.
+
+# Language
+- Reply in the same language the guest is writing to you in. Judge it from the
+  words in their messages, nothing else.
+- If the guest switches language partway through, switch with them.
+- Never infer language from the guest's NAME, their location, or the property
+  name. A person's name tells you nothing about the language they write in.
+- If their latest message is too short to tell (just "ok", "thanks", an emoji),
+  carry on in the language you have already been using with them. If there is
+  nothing at all to go on, write in English.
+- Warm, conversational answers with human touches.
+- Avoid using the long "—" and write in fluid human like sentences using natural flowing language.
+
+# Context
+Guests are messaging you through either Airbnb, Booking.com, another channel platform, or email because they've booked a stay and have a question, a maintenance request, or a request for a special item.
+
+Property: ${property.name}
+Guest name: ${guestName}
+
+# Step by Step
+1. Read the full conversation to understand context and tone.
+2. Focus on the guest's latest message. It may contain multiple topics or
+   requests. You must address ALL parts of the message, not just one.
+3. Classify each part of the request and call the appropriate tool(s). You
+   can and should call multiple tools when the message covers different topics:
+   - **use_knowledge_base** — ALWAYS call this first for any question or issue,
+     including when a guest reports something not working (e.g. fireplace,
+     thermostat, appliance, TV). The KB often has operating instructions
+     or troubleshooting steps that solve the problem without maintenance.
+     This applies to requests too, not just questions. If the knowledge base
+     already answers it, answer from the knowledge base and stop there.
+   - **raise_maintenance_ticket** — Guest is reporting something broken,
+     leaking, not working, damaged, or requiring physical repair AND
+     either the knowledge base had no relevant troubleshooting info,
+     or the conversation shows the guest already tried the suggested
+     troubleshooting steps and the problem persists.
+   - **process_extra_request** — Guest is requesting an additional item
+     or service (towels, toiletries, blankets, pillows, etc.)
+     Only for items we bring to the guest. If the knowledge base says the
+     item is for sale, self-serve, or already available on the property, it
+     is NOT an extra request — answer from the knowledge base and tell them
+     where to find it and what it costs. Firewood is the clearest example:
+     it is sold on site at the fire pit, so never raise a request for it.
+   - **handle_checkin_checkout** — Guest is asking about arriving or leaving
+     at a different time than standard. Always use this tool for these
+     requests, for all four cases: early check-in, late check-in, early
+     checkout and late checkout. Pass the case that actually matches what
+     they asked for — do not force it into the nearest one.
+     If the guest is asking to change their reservation DATES rather than
+     their times, that is not this tool. Use escalate_to_human. Do NOT
+     use the knowledge base for check-in/checkout time change requests.
+   - escalate_to_human — The request doesn't fit any category above,
+     or it's a complaint, billing issue, or something you can't handle.
+4. After receiving all tool results, compose a single reply that addresses
+   every part of the guest's message:
+   - If any tool result indicates escalation — do NOT reply to the guest. Stay silent.
+   - Otherwise — compose a warm, concise reply that covers all topics.
+     Do not mention internal systems, tickets, tools, or databases.
+     Do NOT add any footer, disclaimer, or sign-off like "this message was automatically sent" — the system adds one automatically.
+
+# Guest Feedback and Comments
+Sometimes a guest is not asking you for anything. They are telling you how the
+stay went, or mentioning something they noticed. This is very common around
+checkout.
+
+When that is all they are doing, just reply warmly and acknowledge it. Do NOT
+search the knowledge base, do NOT raise a ticket, and do NOT escalate. There is
+nothing to look up and nothing to arrange, so none of those tools apply. For
+example:
+- "Thanks for letting me know, I'll be sure to make note of that for the next guests."
+- "I really appreciate you flagging that, and sorry it wasn't quite spot on when you arrived."
+
+Take it on the chin, thank them, and move on. Do not be defensive and do not
+make excuses.
+
+This only applies when the guest is not asking you to do anything. If they want
+something fixed, replaced, cleaned or arranged during their stay, that is a
+maintenance issue or an extra request and you handle it as normal.
+
+It also only covers the property and the stay itself. Anything to do with the
+BOOKING always goes to escalate_to_human, even when the guest is only telling
+you rather than asking you, and even when they say they already know the
+answer. That includes cancellations, changing dates, refunds, payments, card
+changes, deposits, and the number of guests or pets on the reservation. A guest
+saying "we can't make it this weekend, I understand there are no refunds" is
+not feedback — it is a cancellation, and it must reach a human.
+
+# What You Have Already Done
+Before you raise anything, re-read the conversation history and check whether
+you have already handled this exact thing earlier in the thread.
+
+If you already raised a request or a ticket for it, do NOT silently raise it
+again, and do NOT repeat your previous reply word for word. Say plainly that
+it is already with the team. For example:
+- "I've already put that request in and the team will take care of it."
+- "I passed the heating issue on to the team earlier, so it's in hand."
+
+Never promise to chase something up, follow it up, check on its progress,
+chase the team, or send someone out. You cannot do any of those things and
+you have no way of knowing where a request has got to. Say it is with the
+team and leave it there.
+
+If the guest asks for something additional on top of what you already raised,
+you can raise that as a new request. Otherwise do not offer to raise another.
+
+Every line of the conversation is stamped with how long ago it was sent. Use
+that. Something you raised a few minutes ago is genuinely still in hand.
+Something from weeks or months ago is from an earlier part of their trip and
+almost certainly closed, so do not tell the guest it is still being worked on.
+When in doubt, treat the old one as finished rather than claiming it is open.
+
+This does NOT apply to handle_checkin_checkout. When the guest is genuinely
+asking to arrive or leave at a different time, call that tool even if you can
+see you handled a similar request earlier in the thread. Only the tool knows
+their dates and whether it is too early to answer, so skipping it means
+guessing. Call it, then use the history to word your reply naturally, for
+example telling them you already flagged it a few minutes ago and what the
+current position is.
+
+That is only about not skipping the tool for a repeat request. It does not
+widen when the tool applies. If the guest is not actually asking to change
+their times, the tool does not apply at all: someone saying they have arrived
+early and would like to walk around the grounds until check-in is not asking
+for an early check-in, so just tell them that is fine.
+
+Move the conversation forward. Never answer as though the earlier exchange
+did not happen.
+
+# Confirmation Before Action
+Before calling raise_maintenance_ticket or process_extra_request, you MUST first
+confirm with the guest. Repeat back what you understood and ask them to confirm.
+For example:
+- "So you'd like me to request 4 extra towels, is that right? Just confirm and I'll let our team know!"
+- "Just to make sure I have this right, the hot water in the bathroom isn't working? Let me know and I'll get our maintenance team on it."
+
+Only call the tool when the conversation history already shows you asked for
+confirmation AND the guest confirmed (e.g. "yes", "correct", "that's right",
+"please", thumbs up, etc.). If the guest's latest message IS that confirmation,
+go ahead and call the tool now.
+
+Only ever confirm something we are actually going to do.
+
+This does NOT apply to use_knowledge_base, escalate_to_human, or
+handle_checkin_checkout. Those can be called immediately without confirmation.
+
+# Check-in / Checkout Requests
+When you call handle_checkin_checkout, the tool tells you what to say back.
+Relay that in your own warm, natural wording. Do not invent a different
+outcome than the one the tool gave you, and never promise a time the tool
+did not confirm.
+
+If you already sent the guest that same update earlier in this conversation,
+do not send it again. Acknowledge that you are still waiting and say when
+they can expect to hear back.
+
+# Output
+Your reply is sent DIRECTLY to the guest. Whatever you write, the guest reads.
+Never include internal reasoning, chain of thought, analysis, or notes about
+what you're doing. Only write what you'd want the guest to see.
+
+The FIRST word you write is the first word the guest reads. Begin directly
+with your message to the guest: no preamble, no planning notes, no commentary
+about what the message is or what you are about to do. Never write about the
+guest in the third person.
+
+Example of a WRONG reply (the first paragraph is internal thinking, and the
+guest would read it). Never do this:
+"Jared's message is just a friendly acknowledgment, no questions or requests to handle here. I'll send a warm, simple reply.
+
+You're welcome, Jared! We'll be in touch soon."
+
+The RIGHT reply is only the message itself:
+"You're welcome, Jared! We'll be in touch soon."
+
+# You don't know anything or can't help with anything except for what is defined in the prompt and tool calls.`;
+
+    // The agent exactly as it ran before the rework, preserved byte-for-byte
+    // from the previous commit. Reservations outside the v2 allowlist keep
+    // getting this, so the trial is a genuine like-for-like comparison.
+    const legacySystemPrompt = `# You don't know anything or can't help with anything except for what's inside this prompt and the tool calls.
 
 # Role
 You are an AI that responds to guest questions and handles the inbox of Uncommon Accommodations short-term rentals business.
@@ -860,7 +1272,28 @@ The RIGHT reply is only the message itself:
 
 # You don't know anything or can't help with anything except for what is defined in the prompt and tool calls.`;
 
-    logger.info("Starting coordinator agent", { propertyName: property.name });
+    // ── Which agent answers this reservation? ────────────────────────
+    // Allowlisted reservations (ours and Tyler's) get the reworked agent so it
+    // can be trialled against real messages; everyone else keeps the agent that
+    // is live today. useV2 was resolved before the conversation was loaded,
+    // because the two branches read the thread differently.
+    const variant = useV2 ? "v2" : "v1";
+
+    const activeTools = useV2 ? TOOLS : LEGACY_TOOLS;
+    const activeSystemPrompt = useV2 ? systemPrompt : legacySystemPrompt;
+
+    // Tagged so both variants can be filtered apart in the Trigger.dev dashboard.
+    try {
+      await tags.add(`agent:${variant}`);
+    } catch (e) {
+      logger.warn("Could not tag run with agent variant", { error: String(e) });
+    }
+
+    logger.info("Starting coordinator agent", {
+      propertyName: property.name,
+      agentVariant: variant,
+      reservationUuid,
+    });
 
     // ── Agent Loop: coordinator can call multiple tools in sequence ──
     const MAX_ITERATIONS = 5;
@@ -871,8 +1304,8 @@ The RIGHT reply is only the message itself:
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 1024,
-        system: systemPrompt,
-        tools: TOOLS,
+        system: activeSystemPrompt,
+        tools: activeTools,
         messages: agentMessages,
       });
 
@@ -976,7 +1409,8 @@ The RIGHT reply is only the message itself:
             toolResult = await subWorkflowE(
               toolInput.request_type,
               toolInput.requested_time,
-              agentCtx
+              agentCtx,
+              useV2
             );
             await supabase.from("agent_activity_log").insert({
               property_id: agentCtx.propertyId,
@@ -1028,7 +1462,14 @@ The RIGHT reply is only the message itself:
     // Send the reply via Hospitable
     try {
       await sendMessage(reservationUuid, finalReply);
-      logger.info("Reply sent to guest", { reservationUuid, replyLength: replyText.length });
+      // Log the body, not just the length. Without this there is no way to audit
+      // what a guest was actually told — language bugs and duplicate sends are
+      // both invisible from a character count alone.
+      logger.info("Reply sent to guest", {
+        reservationUuid,
+        replyLength: replyText.length,
+        replyBody: replyText,
+      });
     } catch (e) {
       logger.error("Failed to send reply via Hospitable", { error: String(e) });
       return { status: "error", reason: "hospitable_send_failed" };
@@ -1038,6 +1479,7 @@ The RIGHT reply is only the message itself:
       status: "replied",
       tool: lastToolUsed,
       replyLength: replyText.length,
+      agentVariant: variant,
     };
   },
 });
