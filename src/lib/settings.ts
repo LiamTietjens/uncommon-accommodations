@@ -9,45 +9,52 @@ export interface AgentModeConfig {
 }
 
 /**
+ * Which agent answers this reservation.
+ *
+ * v2 is the default for every guest as of the rollout on 2026-09-09. v1 is kept
+ * only as a rollback path, reachable two ways without a deploy:
+ *
+ *   agent_variant = "v1"        sends every reservation back to the old agent
+ *   v1_reservation_uuids = ...  pins named reservations to it, leaving the rest
+ *
+ * Read fresh on every run, so either takes effect on the next guest message.
+ *
+ * Fails open to v2: if the settings read fails we want the variant that stops
+ * rather than replying on a conversation it could not fully read. Falling back
+ * to v1 here would restore the truncated-history bug precisely when the
+ * database is already misbehaving.
+ */
+export async function getAgentVariant(reservationUuid: string): Promise<"v1" | "v2"> {
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from("agent_settings")
+      .select("key, value")
+      .in("key", ["agent_variant", "v1_reservation_uuids"]);
+
+    if (error || !data) return "v2";
+
+    const settings = Object.fromEntries(data.map((r) => [r.key, r.value]));
+
+    if (settings.agent_variant === "v1") return "v1";
+
+    const pinnedToV1 = (settings.v1_reservation_uuids ?? "")
+      .split(/[\s,]+/)
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    return pinnedToV1.includes(reservationUuid) ? "v1" : "v2";
+  } catch {
+    return "v2";
+  }
+}
+
+/**
  * Reads the live/test switch from agent_settings on every run, so flipping the
  * toggle in the dashboard takes effect on the next guest message with no deploy.
  *
  * Fails closed: any read error leaves the agent in test mode rather than
  * silently going live to real guests.
  */
-/**
- * Reservations that should run the reworked (v2) agent while everyone else stays
- * on the agent that is live today. Lets the rebuild be trialled against real
- * guest messages on our own two reservations before it reaches paying guests.
- *
- * Reads `v2_reservation_uuids` if that row exists, otherwise falls back to the
- * existing test-mode allowlist — so this needs no database change to start.
- * Add the row later if the two lists ever need to differ.
- *
- * Fails closed: any read error means nobody gets v2 and the live agent is
- * untouched.
- */
-export async function getV2ReservationUuids(): Promise<string[]> {
-  try {
-    const { data, error } = await getSupabaseClient()
-      .from("agent_settings")
-      .select("key, value")
-      .in("key", ["v2_reservation_uuids", "test_reservation_uuids"]);
-
-    if (error || !data) return [];
-
-    const settings = Object.fromEntries(data.map((r) => [r.key, r.value]));
-    const raw = settings.v2_reservation_uuids ?? settings.test_reservation_uuids ?? "";
-
-    return raw
-      .split(/[\s,]+/)
-      .map((s: string) => s.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
 export async function getAgentMode(): Promise<AgentModeConfig> {
   const fallback: AgentModeConfig = { mode: "test", testReservationUuids: [] };
 

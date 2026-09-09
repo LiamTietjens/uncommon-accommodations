@@ -4,7 +4,7 @@ import { getSupabaseClient } from "../lib/supabase.js";
 import { getReservation, getReservationMessages, sendMessage, extractReservationDates, formatCheckInDate, HospitableRateLimitError } from "../lib/hospitable.js";
 import { createProject, getLocalHour } from "../lib/turno.js";
 import { sendSms, truncateForSms, SMS_MAX_CHARS } from "../lib/sms.js";
-import { getAgentMode, getV2ReservationUuids } from "../lib/settings.js";
+import { getAgentMode, getAgentVariant } from "../lib/settings.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -791,9 +791,8 @@ export const mainAgentWorkflow = task({
     // Which agent answers this reservation? Resolved here rather than at the
     // agent loop because v2 reads the thread once and reuses it, where v1 keeps
     // the two separate reads it has always made. Read fresh each run, so the
-    // allowlist can change with no deploy.
-    const v2Uuids = await getV2ReservationUuids();
-    const useV2 = v2Uuids.includes(reservationUuid);
+    // rollback switches can take effect with no deploy.
+    const useV2 = (await getAgentVariant(reservationUuid)) === "v2";
 
     // v1 checks for a newer guest message with its own read of the thread.
     // v2 folds that check into the single read at Step 5.
@@ -1182,9 +1181,10 @@ The RIGHT reply is only the message itself:
 
 # You don't know anything or can't help with anything except for what is defined in the prompt and tool calls.`;
 
-    // The agent exactly as it ran before the rework, preserved byte-for-byte
-    // from the previous commit. Reservations outside the v2 allowlist keep
-    // getting this, so the trial is a genuine like-for-like comparison.
+    // The agent exactly as it ran before the rework, preserved byte-for-byte.
+    // Nothing routes here by default any more; it is kept as the target of the
+    // agent_variant rollback, so a bad day for v2 costs a settings change
+    // rather than a deploy.
     const legacySystemPrompt = `# You don't know anything or can't help with anything except for what's inside this prompt and the tool calls.
 
 # Role
@@ -1273,10 +1273,10 @@ The RIGHT reply is only the message itself:
 # You don't know anything or can't help with anything except for what is defined in the prompt and tool calls.`;
 
     // ── Which agent answers this reservation? ────────────────────────
-    // Allowlisted reservations (ours and Tyler's) get the reworked agent so it
-    // can be trialled against real messages; everyone else keeps the agent that
-    // is live today. useV2 was resolved before the conversation was loaded,
-    // because the two branches read the thread differently.
+    // v2 answers every guest as of 2026-09-09, after trialling on our own two
+    // reservations. v1 runs only when a rollback switch selects it. useV2 was
+    // resolved before the conversation was loaded, because the two branches
+    // read the thread differently.
     const variant = useV2 ? "v2" : "v1";
 
     const activeTools = useV2 ? TOOLS : LEGACY_TOOLS;
