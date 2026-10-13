@@ -7,8 +7,8 @@
  *
  * 1. Host replies: which messages count as a person stepping in, and when that
  *    should stop a run.
- * 2. Extras after 3pm on the day before checkout: when next-day delivery would
- *    land after the guest has left.
+ * 2. Extras too late to reach the guest: after 3pm the day before checkout
+ *    (next-day delivery lands after they've left), on checkout day, or later.
  * 3. Source checks: v2 replies in English, v1 is untouched.
  */
 
@@ -19,8 +19,9 @@ import {
   isHostReplyFromSomeoneElse,
   findHostReply,
   daysFromToday,
-  nextDayDeliveryMissesCheckout,
+  extraMissesCheckout,
   EXTRAS_SAME_DAY_CUTOFF_HOUR,
+  type ExtraTooLate,
 } from "../src/trigger/main-agent.js";
 
 let failed = 0;
@@ -68,7 +69,7 @@ check("guest time in webhook received_at format (+00:00, microseconds) still par
 check("message with no timestamp is ignored",
   !findHostReply([{ sender_type: "host", source: "hospitable" }], guestAt, runNow));
 
-// ── 2. Extras after the cutoff on the day before checkout ───────────────────
+// ── 2. Extras too late to reach the guest before checkout ───────────────────
 console.log(`\n── Days from today, property-local ──`);
 const NY = "America/New_York";
 const at = (s: string) => new Date(s);
@@ -83,22 +84,33 @@ check("no date → null", daysFromToday(null, NY, at("2026-09-29T19:30:00Z")) ==
 check("garbage date → null", daysFromToday("not-a-date", NY, at("2026-09-29T19:30:00Z")) === null);
 
 console.log(`\n── Escalate instead of promising? (cutoff ${EXTRAS_SAME_DAY_CUTOFF_HOUR}:00 local) ──`);
-const cases: [string, string | null, string, string, boolean][] = [
+const cases: [string, string | null, string, string, ExtraTooLate | null][] = [
   // [label, checkout, timezone, now (UTC), expected]
-  ["14:59 EDT, checkout tomorrow → promise (today by end of day)", "2026-09-30", NY, "2026-09-29T18:59:00Z", false],
-  ["15:00 EDT, checkout tomorrow → ESCALATE", "2026-09-30", NY, "2026-09-29T19:00:00Z", true],
-  ["15:30 EDT, checkout tomorrow → ESCALATE (the live test clock)", "2026-09-30", NY, "2026-09-29T19:30:00Z", true],
-  ["23:59 EDT, checkout tomorrow → ESCALATE", "2026-09-30", NY, "2026-09-30T03:59:00Z", true],
-  ["16:00 EDT, checkout in 2 days → promise (tomorrow by 3pm)", "2026-10-01", NY, "2026-09-29T20:00:00Z", false],
-  ["16:00 EDT on checkout day itself → not this rule", "2026-09-30", NY, "2026-09-30T20:00:00Z", false],
-  ["09:00 EDT on checkout day → not this rule", "2026-09-30", NY, "2026-09-30T13:00:00Z", false],
-  ["no checkout date on file → fall back to promising", null, NY, "2026-09-29T19:30:00Z", false],
-  ["15:30 PDT, Los Angeles property, checkout tomorrow → ESCALATE", "2026-09-30", "America/Los_Angeles", "2026-09-29T22:30:00Z", true],
-  ["14:30 PDT (already 17:30 in New York) → promise, local time wins", "2026-09-30", "America/Los_Angeles", "2026-09-29T21:30:00Z", false],
-  ["16:00 EDT Oct 31, checkout Nov 1 (clocks go back) → ESCALATE", "2026-11-01", NY, "2026-10-31T20:00:00Z", true],
+  ["14:59 EDT, checkout tomorrow → promise (today by end of day)", "2026-09-30", NY, "2026-09-29T18:59:00Z", null],
+  ["15:00 EDT, checkout tomorrow → ESCALATE", "2026-09-30", NY, "2026-09-29T19:00:00Z", "checkout_eve"],
+  ["15:30 EDT, checkout tomorrow → ESCALATE", "2026-09-30", NY, "2026-09-29T19:30:00Z", "checkout_eve"],
+  ["23:59 EDT, checkout tomorrow → ESCALATE", "2026-09-30", NY, "2026-09-30T03:59:00Z", "checkout_eve"],
+  ["00:00 EDT on checkout day → ESCALATE", "2026-09-30", NY, "2026-09-30T04:00:00Z", "checkout_day"],
+  ["07:00 EDT on checkout day, before a 10am checkout → ESCALATE", "2026-09-30", NY, "2026-09-30T11:00:00Z", "checkout_day"],
+  ["09:00 EDT on checkout day → ESCALATE (the live test clock)", "2026-09-30", NY, "2026-09-30T13:00:00Z", "checkout_day"],
+  ["14:59 EDT on checkout day → ESCALATE", "2026-09-30", NY, "2026-09-30T18:59:00Z", "checkout_day"],
+  ["16:00 EDT on checkout day → ESCALATE", "2026-09-30", NY, "2026-09-30T20:00:00Z", "checkout_day"],
+  ["23:59 EDT on checkout day → ESCALATE", "2026-09-30", NY, "2026-10-01T03:59:00Z", "checkout_day"],
+  ["00:00 EDT the day after checkout → ESCALATE (already gone)", "2026-09-30", NY, "2026-10-01T04:00:00Z", "after_checkout"],
+  ["two weeks after checkout → ESCALATE (already gone)", "2026-09-30", NY, "2026-10-13T16:00:00Z", "after_checkout"],
+  ["09:00 EDT, checkout in 2 days → promise (today by end of day)", "2026-10-01", NY, "2026-09-29T13:00:00Z", null],
+  ["16:00 EDT, checkout in 2 days → promise (tomorrow by 3pm)", "2026-10-01", NY, "2026-09-29T20:00:00Z", null],
+  ["before the stay, checkout in a week → promise", "2026-10-06", NY, "2026-09-29T20:00:00Z", null],
+  ["no checkout date on file → fall back to promising", null, NY, "2026-09-30T13:00:00Z", null],
+  ["15:30 PDT, Los Angeles property, checkout tomorrow → ESCALATE", "2026-09-30", "America/Los_Angeles", "2026-09-29T22:30:00Z", "checkout_eve"],
+  ["14:30 PDT (already 17:30 in New York) → promise, local time wins", "2026-09-30", "America/Los_Angeles", "2026-09-29T21:30:00Z", null],
+  ["22:00 PDT the night before (already checkout day in New York) → eve, local date wins", "2026-09-30", "America/Los_Angeles", "2026-09-30T05:00:00Z", "checkout_eve"],
+  ["16:00 EDT Oct 31, checkout Nov 1 (clocks go back) → ESCALATE", "2026-11-01", NY, "2026-10-31T20:00:00Z", "checkout_eve"],
+  ["01:30 EST Nov 1, checkout that day (just after clocks go back) → ESCALATE", "2026-11-01", NY, "2026-11-01T06:30:00Z", "checkout_day"],
 ];
 for (const [label, checkout, tz, now, expected] of cases) {
-  check(label, nextDayDeliveryMissesCheckout(checkout, tz, at(now)) === expected);
+  const got = extraMissesCheckout(checkout, tz, at(now));
+  check(got === expected ? label : `${label} (got ${got})`, got === expected);
 }
 
 // ── 3. Source checks: v2 changed, v1 untouched ──────────────────────────────
@@ -119,7 +131,7 @@ check("v2 KB answerer writes English", /useV2 \? "English, whatever language the
 check("v1 KB answerer keeps the guest's language", /: "the guest's language"\}/.test(src));
 check("v1 prompt byte-identical to the last commit", legacyPrompt.length > 0 && legacyPrompt === shippedLegacy);
 check("v1 prompt still detects the guest's language", /Detect the language the guest is writing in/.test(legacyPrompt));
-check("checkout-eve escalation is v2 only", /if \(useV2 && nextDayDeliveryMissesCheckout\(/.test(src));
+check("checkout escalation is v2 only", /const tooLate = useV2 \? extraMissesCheckout\(/.test(src));
 check("last look before sending is v2 only", /if \(useV2\) \{\s*\n\s*const pause = await getActiveCooldown/.test(src));
 check("thread check pauses and stops before the agent loop",
   /findHostReply\(thread, messageCreatedAt, Date\.now\(\)\)[\s\S]{0,200}pauseForHostReply/.test(src));
@@ -127,8 +139,16 @@ check("host webhooks pause the property", /await pauseIfSomeoneElseReplied\(webh
 check("host pause only for v2", /getAgentVariant\(reservationUuid\)\) !== "v2"\) return false/.test(src));
 check("test clock honoured for test reservations only",
   /testReservationUuids\.includes\(reservationUuid\)\s*\n?\s*\? Date\.parse\(payload\.test_now/.test(src));
-check("escalation SMS names the item and the checkout date",
-  /The guest asked for \$\{itemRequested\} after 3pm, but checks out tomorrow \(\$\{checkout\}\)/.test(src));
+check("escalation SMS names the item and the problem",
+  /The guest asked for \$\{itemRequested\} \$\{problem\}\. The AI hasn't promised anything/.test(src));
+for (const [key, wording] of [
+  ["checkout_eve", "after 3pm, but checks out tomorrow (${checkout}), so next-day delivery would come after they leave"],
+  ["checkout_day", "on their checkout day (${checkout}), so a delivery might not reach them before they leave"],
+  ["after_checkout", "after they checked out (${checkout})"],
+]) {
+  check(`escalation SMS wording for ${key} names the checkout date`,
+    src.includes(`${key}: {`) && src.includes(`problem: \`${wording}\``));
+}
 
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
 process.exit(failed ? 1 : 0);

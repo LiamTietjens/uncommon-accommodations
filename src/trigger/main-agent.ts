@@ -30,9 +30,9 @@ interface WebhookPayload {
   received_at: string;
   /**
    * Test reservations only: pins the clock the extra-request timing rules see,
-   * so "after 3pm on the day before checkout" can be tested end to end without
-   * waiting for the real hour. Hospitable never sends this, and every other
-   * reservation ignores it.
+   * so "after 3pm the day before checkout" and "on checkout day" can be tested
+   * end to end without waiting for the real day and hour. Hospitable never
+   * sends this, and every other reservation ignores it.
    */
   test_now?: string;
 }
@@ -550,18 +550,25 @@ Respond with ONLY the urgency level name (e.g. "high"). No explanation, no other
 // on, the next day by 3pm (the Turno window in createProject matches it).
 export const EXTRAS_SAME_DAY_CUTOFF_HOUR = 15;
 
-// Tyler's rule (13 Oct): from the cutoff, the next-day delivery lands on
-// checkout day, after the guest has gone. True when an extra asked for at
-// `now` falls in that gap.
-export function nextDayDeliveryMissesCheckout(
+// Tyler's rule (13 Oct): an extra can't be promised once delivery could land
+// after the guest has gone. That's from the cutoff the day before checkout
+// (next-day delivery lands on checkout day), any time on checkout day, and
+// after it. Says which case `now` falls in, or null when delivery is in time.
+export type ExtraTooLate = "checkout_eve" | "checkout_day" | "after_checkout";
+
+export function extraMissesCheckout(
   checkOutDate: string | null,
   timezone: string,
   now: Date
-): boolean {
-  return (
-    getLocalHour(timezone, now).hour >= EXTRAS_SAME_DAY_CUTOFF_HOUR &&
-    daysFromToday(checkOutDate, timezone, now) === 1
-  );
+): ExtraTooLate | null {
+  const days = daysFromToday(checkOutDate, timezone, now);
+  if (days === null) return null;
+  if (days < 0) return "after_checkout";
+  if (days === 0) return "checkout_day";
+  if (days === 1 && getLocalHour(timezone, now).hour >= EXTRAS_SAME_DAY_CUTOFF_HOUR) {
+    return "checkout_eve";
+  }
+  return null;
 }
 
 // An extra that can't reach the guest before they leave. The agent loop turns
@@ -626,11 +633,13 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
 
   // C2b-0: Too late to reach them before checkout — escalate, promise nothing
   // and raise no Turno task, so Tyler can sort it out by hand. v2 only.
-  if (useV2 && nextDayDeliveryMissesCheckout(ctx.checkOutDate, ctx.timezone, now)) {
-    const checkout = formatCheckInDate(ctx.checkOutDate) ?? "tomorrow";
-    logger.info("Extra request after the cutoff on the day before checkout — escalating", {
+  const tooLate = useV2 ? extraMissesCheckout(ctx.checkOutDate, ctx.timezone, now) : null;
+  if (tooLate) {
+    const checkout = formatCheckInDate(ctx.checkOutDate) ?? ctx.checkOutDate;
+    logger.info("Extra request too late to reach the guest before checkout — escalating", {
       itemRequested,
       checkOut: ctx.checkOutDate,
+      tooLate,
     });
     await supabase.from("extra_requests").insert({
       property_id: ctx.propertyId,
@@ -638,9 +647,23 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
       item_requested: itemRequested,
       status: "escalated",
     });
+    const { reason, problem } = {
+      checkout_eve: {
+        reason: "after 3pm, but the guest checks out tomorrow",
+        problem: `after 3pm, but checks out tomorrow (${checkout}), so next-day delivery would come after they leave`,
+      },
+      checkout_day: {
+        reason: "on the guest's checkout day",
+        problem: `on their checkout day (${checkout}), so a delivery might not reach them before they leave`,
+      },
+      after_checkout: {
+        reason: "after the guest checked out",
+        problem: `after they checked out (${checkout})`,
+      },
+    }[tooLate];
     return {
-      reason: `Extra request after 3pm, but the guest checks out tomorrow: ${itemRequested}`,
-      smsHeadline: `⚠️ AI Escalated — cooldown active. The guest asked for ${itemRequested} after 3pm, but checks out tomorrow (${checkout}), so next-day delivery would come after they leave. The AI hasn't promised anything. Please handle this one yourself.`,
+      reason: `Extra request ${reason}: ${itemRequested}`,
+      smsHeadline: `⚠️ AI Escalated — cooldown active. The guest asked for ${itemRequested} ${problem}. The AI hasn't promised anything. Please handle this one yourself.`,
     };
   }
 
