@@ -7,6 +7,7 @@
     "dev:trigger": "npx trigger.dev@4.4.6 dev",
     "deploy:trigger": "npx trigger.dev@4.4.6 deploy",
     "test:logic": "node scripts/test-checkin-logic.mjs",
+    "test:rules": "tsx scripts/test-agent-rules.ts",
     "test:agent": "node scripts/test-agent-suite.mjs",
     "test:real": "node scripts/test-agent-realworld.mjs",
     "compare": "node scripts/compare-variants.mjs"

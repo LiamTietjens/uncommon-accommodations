@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  COORDINATOR TEST SUITE — 32 scenarios
+ *  COORDINATOR TEST SUITE — 34 scenarios
  * ═══════════════════════════════════════════════════════════════════════════
  *
  *  Run:  npm run test:agent            (all)
@@ -544,13 +544,42 @@ const scenarios = [
     cat: "edge", name: "french-guest",
     guest: "Camille", locale: "fr-FR", history: [],
     msg: "Bonjour, est-ce que le jacuzzi est disponible en hiver ?",
-    want: "Guest genuinely writes French with fr locale → reply in French.",
+    want: "Tyler 13 Oct: always reply in English, even to a guest writing French.",
     stub: { use_knowledge_base: KB.hottub },
     expect: ({ text, finalText }) => {
       const t = `${text || ""} ${finalText || ""}`.trim();
       if (!t) return null; // tool-only turn, nothing to judge
-      return /\b(le|la|les|est|vous|nous|bonjour|jacuzzi|hiver)\b/i.test(t)
-        ? null : `replied in English to a French guest: "${t.slice(0, 90)}"`;
+      return /\b(bonjour|merci|vous|nous|est disponible|hiver|oui)\b/i.test(t)
+        ? `replied in French: "${t.slice(0, 90)}"` : null;
+    },
+  },
+  {
+    cat: "edge", name: "portuguese-guest",
+    guest: "Marco", locale: "pt-BR", history: [],
+    msg: "Vídeo com as instruções não está abrindo",
+    want: "Tyler 13 Oct (Marco, 4 Oct): Portuguese message, reply in English.",
+    stub: { use_knowledge_base: "The check-in video is at https://example.com/checkin. If it won't play, the same steps are written out in the guidebook link in your welcome message." },
+    expect: ({ text, finalText }) => {
+      const t = `${text || ""} ${finalText || ""}`.trim();
+      if (!t) return null; // tool-only turn or escalation, nothing to judge
+      return /\b(olá|obrigad[oa]|você|vídeo|não|está|instruções)\b/i.test(t)
+        ? `replied in Portuguese: "${t.slice(0, 90)}"` : null;
+    },
+  },
+  {
+    cat: "edge", name: "french-thread-continues",
+    guest: "Nicole", locale: "fr", stub: { use_knowledge_base: KB.hottub },
+    history: [
+      ["Guest", "Bonjour ! Le spa est-il chaud ?", "2 hours ago"],
+      ["Host", "Bonjour Nicole ! Oui, le spa est prêt pour vous. Bon séjour !", "2 hours ago"],
+    ],
+    msg: "Ok c'est bon, on va aller se réchauffer dans le spa 😂 il ferme à quelle heure ?",
+    want: "Tyler 13 Oct (Nicole, 4 Oct): earlier replies were French, but from now on reply in English.",
+    expect: ({ text, finalText }) => {
+      const t = `${text || ""} ${finalText || ""}`.trim();
+      if (!t) return null;
+      return /\b(bonjour|merci|vous|le spa|bon séjour|profitez|oui)\b/i.test(t)
+        ? `kept replying in French: "${t.slice(0, 90)}"` : null;
     },
   },
   {

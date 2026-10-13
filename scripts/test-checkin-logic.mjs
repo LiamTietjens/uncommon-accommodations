@@ -122,8 +122,10 @@ const structural = [
 const legacyPrompt = src.match(/const legacySystemPrompt = `([\s\S]*?)`;\n/)?.[1] ?? "";
 let shippedPrompt = "";
 try {
+  // Compared with the last commit's legacy prompt: since v2 became the default
+  // the shipped `systemPrompt` is v2's, so this is what "v1 untouched" means now.
   shippedPrompt = execSync("git show HEAD:src/trigger/main-agent.ts", { encoding: "utf8" })
-    .match(/const systemPrompt = `([\s\S]*?)`;\n/)?.[1] ?? "";
+    .match(/const legacySystemPrompt = `([\s\S]*?)`;\n/)?.[1] ?? "";
 } catch { /* not a git checkout — the comparison below will fail loudly */ }
 
 const v1v2 = [
@@ -147,7 +149,7 @@ const v1v2 = [
   ["subWorkflowE receives the variant flag", /useV2: boolean/.test(src)],
   ["both subWorkflowE guards are gated on useV2",
     /const noCoordLabel = useV2 \?/.test(src) && /if \(useV2 && days !== null/.test(src)],
-  ["allowlist is read fresh per run", /await getV2ReservationUuids\(\)/.test(src)],
+  ["variant is read fresh per run", /await getAgentVariant\(reservationUuid\)/.test(src)],
   ["runs are tagged with the variant", /tags\.add\(`agent:\$\{variant\}`\)/.test(src)],
 ];
 

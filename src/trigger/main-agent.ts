@@ -28,6 +28,13 @@ interface WebhookPayload {
     platform?: string;
   };
   received_at: string;
+  /**
+   * Test reservations only: pins the clock the extra-request timing rules see,
+   * so "after 3pm on the day before checkout" can be tested end to end without
+   * waiting for the real hour. Hospitable never sends this, and every other
+   * reservation ignores it.
+   */
+  test_now?: string;
 }
 
 interface AgentContext {
@@ -39,9 +46,11 @@ interface AgentContext {
   guestName: string; // first name only — feeds the guest-facing prompt, don't widen
   guestFullName: string; // "First Last" — staff SMS only
   checkInDate: string | null; // raw YYYY-MM-DD, property-local
+  checkOutDate: string | null; // raw YYYY-MM-DD, property-local
   turnoPropertyId: string | null;
   timezone: string;
   testMode: boolean; // tags Turno tasks as test runs — see subWorkflowC
+  testNow: Date | null; // clock pinned by a test reservation (test_now); null in real runs
 }
 
 interface ConversationMessage {
@@ -86,6 +95,101 @@ function formatHistory(history: ConversationMessage[], now = Date.now()): string
       return when ? `[${when}] ${who}: ${m.content}` : `${who}: ${m.content}`;
     })
     .join("\n");
+}
+
+// ─── Host replies ────────────────────────────────────────────────────
+
+// Tyler's rule (13 Oct): when he or his team answer a guest themselves, the
+// agent stays out of that property for five minutes so it never talks over
+// them. Without this it took their words for its own (every host line reads
+// "Host:") and replied on top of them, as with Gregory on 1 Oct.
+export const HOST_REPLY_PAUSE_MINUTES = 5;
+
+// A host-side message written by someone other than this agent: typed in
+// Hospitable ("hospitable") or straight into Airbnb/Booking ("platform"), or
+// sent from Hospitable's AI button ("AI"). The agent's own sends arrive as
+// "public_api" and Hospitable's scheduled messages as "automated"; neither is
+// a person stepping in. A message with no source is left alone, not guessed at.
+export function isHostReplyFromSomeoneElse(m: { sender_type?: string; source?: string | null }): boolean {
+  return m.sender_type !== "guest" && !!m.source && m.source !== "public_api" && m.source !== "automated";
+}
+
+// The message that should stop this run, if any: a person's reply sent after
+// the guest message being answered (they already answered it), or inside the
+// pause window (they are mid-conversation with the guest).
+export function findHostReply(thread: any[], guestMessageAt: string, now: number): any | undefined {
+  const guestAt = Date.parse(guestMessageAt);
+  const pauseStart = now - HOST_REPLY_PAUSE_MINUTES * 60_000;
+  return thread.find((m) => {
+    if (!isHostReplyFromSomeoneElse(m)) return false;
+    const at = Date.parse(m.created_at);
+    return at > guestAt || at > pauseStart;
+  });
+}
+
+// An ordinary cooldown, so the property shows as paused on the dashboard and
+// Tyler can end it early there. Never throws: failing to pause must not stop
+// anything else. Returns whether the pause was saved.
+async function pauseForHostReply(propertyId: string, reservationUuid: string): Promise<boolean> {
+  try {
+    const now = Date.now();
+    const { error } = await getSupabaseClient().from("cooldowns").insert({
+      property_id: propertyId,
+      activated_at: new Date(now).toISOString(),
+      expires_at: new Date(now + HOST_REPLY_PAUSE_MINUTES * 60_000).toISOString(),
+      reason: `Host replied to the guest, AI paused for ${HOST_REPLY_PAUSE_MINUTES} minutes`,
+      is_active: true,
+      reservation_uuid: reservationUuid,
+    });
+    if (error) throw new Error(error.message);
+    return true;
+  } catch (e) {
+    logger.error("Could not pause the agent after a host reply", { propertyId, error: String(e) });
+    return false;
+  }
+}
+
+// Called for every host-side webhook. When a person rather than this agent
+// has just written to the guest, pause the agent on that property; a run
+// already working on the guest sees the pause in its last check before
+// sending. Only where the agent answers this reservation, and only for v2:
+// v1 is the untouched rollback and never paused for hosts.
+async function pauseIfSomeoneElseReplied(
+  webhookData: any,
+  reservationUuid: string | undefined,
+  propertyUuid: string | undefined
+): Promise<boolean> {
+  if (!isHostReplyFromSomeoneElse(webhookData) || !reservationUuid || !propertyUuid) return false;
+  try {
+    const agentMode = await getAgentMode();
+    if (agentMode.mode === "test" && !agentMode.testReservationUuids.includes(reservationUuid)) return false;
+    if ((await getAgentVariant(reservationUuid)) !== "v2") return false;
+
+    const { data: property } = await getSupabaseClient()
+      .from("properties")
+      .select("id")
+      .eq("hospitable_property_uuid", propertyUuid)
+      .single();
+    if (!property) return false;
+
+    return await pauseForHostReply(property.id, reservationUuid);
+  } catch (e) {
+    logger.error("Could not check whether to pause after a host reply", { error: String(e) });
+    return false;
+  }
+}
+
+// Any cooldown still running on the property: an escalation's, or a pause
+// after a host reply.
+async function getActiveCooldown(propertyId: string): Promise<{ expires_at: string; reason: string } | null> {
+  const { data } = await getSupabaseClient()
+    .from("cooldowns")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("is_active", true)
+    .gt("expires_at", new Date().toISOString())
+    .limit(1);
+  return data?.[0] ?? null;
 }
 
 // ─── Staff SMS helpers ───────────────────────────────────────────────
@@ -247,7 +351,8 @@ const LEGACY_TOOLS: Anthropic.Tool[] = TOOLS.map((t) =>
 
 async function subWorkflowA(
   query: string,
-  ctx: AgentContext
+  ctx: AgentContext,
+  useV2: boolean
 ): Promise<{ answer: string; requiresMaintenance: boolean } | null> {
   const supabase = getSupabaseClient();
 
@@ -313,7 +418,7 @@ ${kbText}
 1. Read the guest's question carefully.
 2. Search ONLY the knowledge base entries above for a relevant answer.
 3. If you find an answer in the knowledge base:
-   - Write a warm, conversational reply in the guest's language.
+   - Write a warm, conversational reply in ${useV2 ? "English, whatever language the guest wrote in" : "the guest's language"}.
    - If the KB entry includes a video_url or image_url, include it naturally in your reply.
    - Keep it concise. Don't over-explain.
 4. If the answer is NOT in the knowledge base — even partially:
@@ -441,10 +546,36 @@ Respond with ONLY the urgency level name (e.g. "high"). No explanation, no other
 
 // ─── Sub-Workflow C: Extra Request Processing ────────────────────────
 
+// Extras asked for before this local hour go out the same day; from this hour
+// on, the next day by 3pm (the Turno window in createProject matches it).
+export const EXTRAS_SAME_DAY_CUTOFF_HOUR = 15;
+
+// Tyler's rule (13 Oct): from the cutoff, the next-day delivery lands on
+// checkout day, after the guest has gone. True when an extra asked for at
+// `now` falls in that gap.
+export function nextDayDeliveryMissesCheckout(
+  checkOutDate: string | null,
+  timezone: string,
+  now: Date
+): boolean {
+  return (
+    getLocalHour(timezone, now).hour >= EXTRAS_SAME_DAY_CUTOFF_HOUR &&
+    daysFromToday(checkOutDate, timezone, now) === 1
+  );
+}
+
+// An extra that can't reach the guest before they leave. The agent loop turns
+// this into a hard stop (Sub-Workflow D) instead of a reply.
+interface ExtraRequestEscalation {
+  reason: string;
+  smsHeadline: string;
+}
+
 async function subWorkflowC(
   itemRequested: string,
-  ctx: AgentContext
-): Promise<string> {
+  ctx: AgentContext,
+  useV2: boolean
+): Promise<string | ExtraRequestEscalation> {
   const supabase = getSupabaseClient();
 
   // C1: Check allowed extras using AI matching
@@ -491,16 +622,39 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
     return `Declined. "${itemRequested}" is not in the allowed extras list for this property.`;
   }
 
+  const now = ctx.testNow ?? new Date();
+
+  // C2b-0: Too late to reach them before checkout — escalate, promise nothing
+  // and raise no Turno task, so Tyler can sort it out by hand. v2 only.
+  if (useV2 && nextDayDeliveryMissesCheckout(ctx.checkOutDate, ctx.timezone, now)) {
+    const checkout = formatCheckInDate(ctx.checkOutDate) ?? "tomorrow";
+    logger.info("Extra request after the cutoff on the day before checkout — escalating", {
+      itemRequested,
+      checkOut: ctx.checkOutDate,
+    });
+    await supabase.from("extra_requests").insert({
+      property_id: ctx.propertyId,
+      reservation_uuid: ctx.reservationUuid,
+      item_requested: itemRequested,
+      status: "escalated",
+    });
+    return {
+      reason: `Extra request after 3pm, but the guest checks out tomorrow: ${itemRequested}`,
+      smsHeadline: `⚠️ AI Escalated — cooldown active. The guest asked for ${itemRequested} after 3pm, but checks out tomorrow (${checkout}), so next-day delivery would come after they leave. The AI hasn't promised anything. Please handle this one yourself.`,
+    };
+  }
+
   // C2b: Allowed — create Turno task
   let turnoProjectId: string | null = null;
 
   // Check if guest is messaging before their stay — schedule for arrival day if so
-  const local = getLocalHour(ctx.timezone);
+  const local = getLocalHour(ctx.timezone, now);
   const pad = (n: number) => String(n).padStart(2, "0");
   const todayStr = `${local.year}-${pad(local.month)}-${pad(local.day)}`;
   let scheduledBeginTime: string | undefined;
   let scheduledEndTime: string | undefined;
-  let deliveryEstimate = local.hour < 15 ? "today by the end of the day" : "tomorrow by 3pm";
+  let deliveryEstimate =
+    local.hour < EXTRAS_SAME_DAY_CUTOFF_HOUR ? "today by the end of the day" : "tomorrow by 3pm";
 
   // checkInDate is resolved once in Phase 1; null here means the lookup failed,
   // which falls through to immediate scheduling exactly as before.
@@ -564,7 +718,8 @@ Respond with ONLY "YES" or "NO". Nothing else.`,
 async function subWorkflowD(
   reason: string,
   guestQuestion: string,
-  ctx: AgentContext
+  ctx: AgentContext,
+  smsHeadline = "⚠️ AI Escalated — cooldown active. Please review all recent guest messages and respond manually."
 ): Promise<void> {
   const supabase = getSupabaseClient();
 
@@ -602,7 +757,7 @@ async function subWorkflowD(
 
   // Guest quote goes last: it's the only unbounded part, so if the SMS has
   // to be faded to fit, the instruction above survives and the quote fades.
-  const smsBody = `⚠️ AI Escalated — cooldown active. Please review all recent guest messages and respond manually.\n\nGuest wrote:\n"${guestQuestion}"`;
+  const smsBody = `${smsHeadline}\n\nGuest wrote:\n"${guestQuestion}"`;
   await notifyRecipients(recipients, smsBody, ctx);
 
   logger.warn("Sub-Workflow D: HARD STOP — no reply to guest", {
@@ -620,13 +775,18 @@ async function subWorkflowD(
 // Returns null when we have no check-in date, and the caller then falls back to
 // the coordinated path rather than guessing.
 function daysUntilCheckIn(ctx: AgentContext): number | null {
-  if (!ctx.checkInDate) return null;
-  const [y, m, d] = ctx.checkInDate.split("-").map(Number);
+  return daysFromToday(ctx.checkInDate, ctx.timezone);
+}
+
+// Whole days from today (property-local) to a YYYY-MM-DD date: 1 is tomorrow,
+// negative once it has passed, null when there is no usable date.
+export function daysFromToday(date: string | null, timezone: string, now = new Date()): number | null {
+  if (!date) return null;
+  const [y, m, d] = date.split("-").map(Number);
   if (!y || !m || !d) return null;
-  const local = getLocalHour(ctx.timezone);
+  const local = getLocalHour(timezone, now);
   const todayUtc = Date.UTC(local.year, local.month - 1, local.day);
-  const checkInUtc = Date.UTC(y, m - 1, d);
-  return Math.round((checkInUtc - todayUtc) / 86_400_000);
+  return Math.round((Date.UTC(y, m - 1, d) - todayUtc) / 86_400_000);
 }
 
 // Cases that need no coordination at all: check-in is self-service, and leaving
@@ -777,10 +937,19 @@ export const mainAgentWorkflow = task({
 
     logger.info("Webhook received", { senderType, reservationUuid, hasBody: !!messageBody, guestLocale });
 
-    // Filter out host messages
+    // Filter out host messages. If a person rather than this agent wrote it,
+    // pause the agent on the property first so it doesn't talk over them.
     if (senderType === "host") {
-      logger.info("Host message — ignoring");
-      return { status: "skipped", reason: "host_message" };
+      const pausedAgent = await pauseIfSomeoneElseReplied(webhookData, reservationUuid, webhookPropertyUuid);
+      if (pausedAgent) {
+        logger.info(`Host replied by hand — agent paused on this property for ${HOST_REPLY_PAUSE_MINUTES} minutes`, {
+          reservationUuid,
+          source: (webhookData as any)?.source,
+        });
+      } else {
+        logger.info("Host message — ignoring");
+      }
+      return { status: "skipped", reason: "host_message", pausedAgent };
     }
 
     // 30-second debounce: wait, then check if a newer guest message arrived
@@ -872,18 +1041,12 @@ export const mainAgentWorkflow = task({
     }
 
     // Step 4: Cooldown check
-    const { data: activeCooldowns } = await supabase
-      .from("cooldowns")
-      .select("*")
-      .eq("property_id", property.id)
-      .eq("is_active", true)
-      .gt("expires_at", new Date().toISOString())
-      .limit(1);
+    const activeCooldown = await getActiveCooldown(property.id);
 
-    if (activeCooldowns && activeCooldowns.length > 0) {
+    if (activeCooldown) {
       logger.info("Property is in cooldown — ignoring message", {
         propertyId: property.id,
-        cooldownExpires: activeCooldowns[0].expires_at,
+        cooldownExpires: activeCooldown.expires_at,
       });
       return { status: "skipped", reason: "cooldown_active" };
     }
@@ -918,6 +1081,21 @@ export const mainAgentWorkflow = task({
         return { status: "skipped", reason: "newer_message_exists" };
       }
 
+      // Someone already stepped in: Tyler or his team replied after this guest
+      // message, or within the last few minutes. Replying now would talk over
+      // them, so stay quiet and pause the property.
+      const hostReply = findHostReply(thread, messageCreatedAt, Date.now());
+      if (hostReply) {
+        await pauseForHostReply(property.id, reservationUuid);
+        logger.info("A person already replied — not replying, agent paused on this property", {
+          reservationUuid,
+          hostReplyAt: hostReply.created_at,
+          source: hostReply.source,
+          pauseMinutes: HOST_REPLY_PAUSE_MINUTES,
+        });
+        return { status: "skipped", reason: "host_replied" };
+      }
+
       conversationHistory = toConversationHistory(thread);
     } else {
       try {
@@ -946,8 +1124,17 @@ export const mainAgentWorkflow = task({
       [guestData?.first_name, guestData?.last_name].filter(Boolean).join(" ") ||
       (webhookData as any)?.sender?.full_name ||
       guestName;
-    const { checkIn } = extractReservationDates(reservationData);
+    const { checkIn, checkOut } = extractReservationDates(reservationData);
     const checkInDate = checkIn?.split(" ")[0]?.split("T")[0] ?? null;
+    const checkOutDate = checkOut?.split(" ")[0]?.split("T")[0] ?? null;
+
+    // A test reservation can pin the clock the extra-request timing rules see
+    // (test_now). Everyone else always runs on the real time.
+    const pinned = agentMode.testReservationUuids.includes(reservationUuid)
+      ? Date.parse(payload.test_now ?? "")
+      : NaN;
+    const testNow = Number.isFinite(pinned) ? new Date(pinned) : null;
+    if (testNow) logger.info("Test clock pinned", { testNow: testNow.toISOString() });
 
     // Build agent context (latestMessage updated after bundling below)
     const agentCtx: AgentContext = {
@@ -959,9 +1146,11 @@ export const mainAgentWorkflow = task({
       guestName,
       guestFullName,
       checkInDate,
+      checkOutDate,
       turnoPropertyId: property.turno_property_id,
       timezone: property.timezone || "America/New_York",
       testMode: agentMode.mode === "test",
+      testNow,
     };
 
     // ── Phase 2: Agent Loop ─────────────────────────────────────────
@@ -1007,14 +1196,12 @@ never offer to pass something on to Tyler or "let Tyler know" — you are Tyler,
 so you handle it yourself.
 
 # Language
-- Reply in the same language the guest is writing to you in. Judge it from the
-  words in their messages, nothing else.
-- If the guest switches language partway through, switch with them.
-- Never infer language from the guest's NAME, their location, or the property
-  name. A person's name tells you nothing about the language they write in.
-- If their latest message is too short to tell (just "ok", "thanks", an emoji),
-  carry on in the language you have already been using with them. If there is
-  nothing at all to go on, write in English.
+- Always reply in English, whatever language the guest writes in. Read and
+  understand their message in any language, then answer it in English.
+- This holds even if earlier replies in the conversation were in another
+  language. From now on, every reply is in English.
+- A message too short to show a language (just "ok", "thanks", an emoji)
+  still gets your normal warm reply, in English.
 - Warm, conversational answers with human touches.
 - Avoid using the long "—" and write in fluid human like sentences using natural flowing language.
 
@@ -1347,7 +1534,7 @@ The RIGHT reply is only the message itself:
 
         switch (toolName) {
           case "use_knowledge_base": {
-            const result = await subWorkflowA(toolInput.query, agentCtx);
+            const result = await subWorkflowA(toolInput.query, agentCtx, useV2);
             if (result === null) {
               // No KB entries at all → hard stop
               await supabase.from("agent_activity_log").insert({
@@ -1398,7 +1585,18 @@ The RIGHT reply is only the message itself:
           }
 
           case "process_extra_request": {
-            toolResult = await subWorkflowC(toolInput.item_requested, agentCtx);
+            const outcome = await subWorkflowC(toolInput.item_requested, agentCtx, useV2);
+            if (typeof outcome !== "string") {
+              // Can't reach the guest before they leave → hard stop, like any escalation
+              await supabase.from("agent_activity_log").insert({
+                property_id: agentCtx.propertyId,
+                reservation_uuid: agentCtx.reservationUuid,
+                action_type: "escalation",
+              });
+              await subWorkflowD(outcome.reason, bundledMessage, agentCtx, outcome.smsHeadline);
+              return { status: "escalated", reason: outcome.reason };
+            }
+            toolResult = outcome;
             await supabase.from("agent_activity_log").insert({
               property_id: agentCtx.propertyId,
               reservation_uuid: agentCtx.reservationUuid,
@@ -1460,6 +1658,23 @@ The RIGHT reply is only the message itself:
       .single();
     const footer = footerSetting?.value ?? "\n\n—\nThis message was automatically sent by my AI agent. In case of emergency, please call 610-574-1334.";
     const finalReply = replyText + footer;
+
+    // Last look before sending. If Tyler or his team stepped in while this run
+    // was working, their message's webhook has paused the property by now, so
+    // stay quiet rather than reply on top of them. v2 only.
+    if (useV2) {
+      const pause = await getActiveCooldown(property.id);
+      if (pause) {
+        logger.info("Property was paused while this run was working — reply not sent", {
+          reservationUuid,
+          pausedUntil: pause.expires_at,
+          pauseReason: pause.reason,
+          tool: lastToolUsed,
+          replyBody: replyText,
+        });
+        return { status: "skipped", reason: "paused_before_send" };
+      }
+    }
 
     // Send the reply via Hospitable
     try {
